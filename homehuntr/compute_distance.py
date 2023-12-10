@@ -1,21 +1,7 @@
 import pyspark.sql.functions as F
-from pyspark.sql import SparkSession
 from pyspark.sql.dataframe import DataFrame
 from pyspark.sql import Column
-from delta import configure_spark_with_delta_pip
-
-
-def get_spark() -> SparkSession:
-    builder = (
-        SparkSession.builder.appName("MyApp")
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config(
-            "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-        )
-    )
-
-    return configure_spark_with_delta_pip(builder).getOrCreate()
+from common import get_spark
 
 
 def get_initial_transit_cols(df: DataFrame) -> DataFrame:
