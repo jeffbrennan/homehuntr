@@ -1,2 +1,7 @@
 *.env
 *.json
+*.csv
+*.parquet
+*.ipynb
+.DS_Store
+/homehuntr/data
