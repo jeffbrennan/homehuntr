@@ -11,7 +11,11 @@ requests = "^2.31.0"
 python-dotenv = "^1.0.0"
 polars = "^0.19.19"
 pyspark = "^3.5.0"
+delta-spark = "3.0.0"
 
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.27.1"
 
 [build-system]
 requires = ["poetry-core"]
