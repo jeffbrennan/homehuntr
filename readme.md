@@ -18,3 +18,13 @@ A project to decide on apartment listings based on a set of criteria. Rankings a
 ### Streeteasy
 
 Price and amenities
+
+## ELT
+
+```mermaid
+  graph LR;
+      travel.py-->directions.json;
+      directions.json-->compute_distance.py;
+      compute_distance.py-->clean_data.py;
+      clean_data.py-->directions_delta;
+```
