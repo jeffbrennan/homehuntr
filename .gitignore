@@ -3,5 +3,6 @@
 *.csv
 *.parquet
 *.ipynb
+*.pyc
 .DS_Store
 /homehuntr/data
