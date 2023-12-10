@@ -11,5 +11,7 @@ def get_spark() -> SparkSession:
             "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
     )
+    spark = configure_spark_with_delta_pip(builder).getOrCreate()
+    spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", "false")
 
-    return configure_spark_with_delta_pip(builder).getOrCreate()
+    return spark
