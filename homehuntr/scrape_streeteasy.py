@@ -6,6 +6,7 @@ from typing import TypedDict
 from datetime import datetime as dt
 import argparse
 import uuid
+from pathlib import Path
 
 
 class PriceElement(TypedDict):
@@ -28,6 +29,15 @@ class Home(TypedDict):
     price_details: PriceElement
     vitals: Vitals
     amenities: list
+
+
+class CheckResult(TypedDict):
+    url_exists: bool
+    uid: str
+
+
+class ScrapeResult(TypedDict):
+    uid: str
 
 
 def get_page_tree(url: str) -> HtmlElement:
@@ -67,7 +77,11 @@ def get_price_elements(tree: HtmlElement) -> PriceElement:
     price_element = tree.xpath("//div[@class='details_info_price']")[0]
     price_info = [i.strip() for i in price_element.text_content().split("\n")]
     price_clean = [i.upper() for i in price_info if i != ""]
-    price_change, price, availability, fee_str = price_clean
+    if len(price_clean) == 3:
+        price, availability, fee_str = price_clean
+        price_change = "unknown"
+    else:
+        price_change, price, availability, fee_str = price_clean
 
     if price_change == "\u2193":
         price_change = "decrease"
@@ -119,11 +133,20 @@ def get_vitals(tree: HtmlElement) -> Vitals:
     date_available_raw, days_on_market = [
         i.text_content().strip().split("\n")[-1].strip() for i in vitals
     ]
-    date_available = dt.strptime(date_available_raw, "%m/%d/%Y").strftime("%Y-%m-%d")
+    if date_available_raw.upper() == "AVAILABLE NOW":
+        date_available = dt.today().strftime("%Y-%m-%d")
+    else:
+        date_available = dt.strptime(date_available_raw, "%m/%d/%Y").strftime(
+            "%Y-%m-%d"
+        )
     return {"date_available": date_available, "days_on_market": days_on_market}
 
 
-def parse_address(url) -> str:
+def scrape_apartment_url(url) -> ScrapeResult:
+    check_result = check_if_url_exists(url)
+    if check_result["url_exists"]:
+        return check_result
+
     print("Parsing address: ", url)
 
     tree = get_page_tree(url)
@@ -144,12 +167,33 @@ def parse_address(url) -> str:
     with open(f"homehuntr/data/address/{address_uid}.json", "w") as f:
         json.dump(address_parsed, f, indent=4, ensure_ascii=False)
 
-    return address_uid
+    print("Scraped address: ", building_address)
+    return {"uid": address_uid}
+
+
+def check_if_url_exists(url: str) -> CheckResult:
+    def load_json(path):
+        with open(path) as f:
+            return json.load(f)
+
+    # TODO: replace this with lookup against final parquet
+    base_path = Path(__file__).parent / "data" / "address"
+    all_addresses = [load_json(i) for i in base_path.glob("*.json")]
+
+    url_exists = any([i["url"] == url for i in all_addresses])
+    if url_exists:
+        uid = [i["uid"] for i in all_addresses if i["url"] == url][0]
+    else:
+        uid = str(uuid.uuid4())
+
+    output: CheckResult = {"url_exists": url_exists, "uid": uid}
+    return output
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", help="url to scrape", required=True)
     args = parser.parse_args()
-    building_address = parse_address(args.url)
-    print("Scraped address: ", building_address)
+
+    result = scrape_apartment_url(args.url)
+    print(result)
