@@ -73,13 +73,13 @@ def parse_stops(df: DataFrame) -> DataFrame:
     return out_df
 
 
-def parse_mode_duration(dur_col: Column, mode: str, second_divisor: int) -> Column:
+def parse_mode_duration(dur_col: str, mode: str, second_divisor: int) -> Column:
     duration_array_seconds: Column = F.array_compact(
         F.transform(
             F.col("steps"),
             lambda x: F.when(
-                x["travel_mode"] == "WALKING",
-                x["duration"]["value"].cast("int"),
+                x["travel_mode"] == mode,
+                x[dur_col]["value"].cast("int"),
             ).otherwise(F.lit(None)),
         ),
     )
@@ -122,7 +122,10 @@ def parse_transit_result(df: DataFrame) -> DataFrame:
     return transit_directions_final
 
 
-def parse_distance():
+def parse_distance(run_type: str):
+    if run_type not in ["append", "overwrite"]:
+        raise ValueError(f"run_type must be 'append' or 'overwrite', got {run_type}")
+
     spark = get_spark()
     transit_directions_raw = spark.read.json(
         "homehuntr/data/directions/*_transit.json", multiLine=True
@@ -130,10 +133,10 @@ def parse_distance():
     transit_directions_final = parse_transit_result(transit_directions_raw)
 
     transit_directions_final.show(10, False)
-    transit_directions_final.write.format("delta").mode("append").save(
+    transit_directions_final.write.format("delta").mode(run_type).save(
         "homehuntr/data/delta/transit_directions"
     )
 
 
 if __name__ == "__main__":
-    parse_distance()
+    parse_distance("overwrite")
