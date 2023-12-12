@@ -12,6 +12,7 @@ python-dotenv = "^1.0.0"
 polars = "^0.19.19"
 pyspark = "^3.5.0"
 delta-spark = "3.0.0"
+lxml = "^4.9.3"
 
 
 [tool.poetry.group.dev.dependencies]
