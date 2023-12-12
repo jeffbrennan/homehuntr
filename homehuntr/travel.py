@@ -4,9 +4,34 @@ from dotenv import load_dotenv
 import json
 from pathlib import Path
 import argparse
+from typing import Optional
 
 
-def get_directions(origin: str, destination: str, mode: str) -> dict:
+def get_place_id(address: str) -> Optional[str]:
+    load_dotenv()
+    MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
+    request_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+
+    params = {
+        "input": address,
+        "inputtype": "textquery",
+        "fields": "place_id",
+        "key": MAPS_API_KEY,
+    }
+    print(f"Requesting place id for {address}")
+    response = requests.get(request_url, params=params)
+
+    if response.json()["status"] != "OK":
+        raise ValueError(response.json()["status"])
+
+    if response.status_code != 200:
+        raise ValueError(
+            f"Place ID request failed for {address}: {response.status_code}"
+        )
+
+    return response.json()["candidates"][0]["place_id"]
+
+
     load_dotenv()
     MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
     request_url = "https://maps.googleapis.com/maps/api/directions/json"
