@@ -122,13 +122,18 @@ def parse_transit_result(df: DataFrame) -> DataFrame:
     return transit_directions_final
 
 
-spark = get_spark()
-transit_directions_raw = spark.read.json(
-    "homehuntr/data/directions/*_transit.json", multiLine=True
-)
-transit_directions_final = parse_transit_result(transit_directions_raw)
+def parse_distance():
+    spark = get_spark()
+    transit_directions_raw = spark.read.json(
+        "homehuntr/data/directions/*_transit.json", multiLine=True
+    )
+    transit_directions_final = parse_transit_result(transit_directions_raw)
 
-transit_directions_final.show(10, False)
-transit_directions_final.write.format("delta").mode("append").save(
-    "homehuntr/data/delta/transit_directions"
-)
+    transit_directions_final.show(10, False)
+    transit_directions_final.write.format("delta").mode("append").save(
+        "homehuntr/data/delta/transit_directions"
+    )
+
+
+if __name__ == "__main__":
+    parse_distance()
