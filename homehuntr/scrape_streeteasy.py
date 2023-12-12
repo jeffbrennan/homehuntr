@@ -123,15 +123,18 @@ def get_vitals(tree: HtmlElement) -> Vitals:
     return {"date_available": date_available, "days_on_market": days_on_market}
 
 
-def parse_address(url) -> None:
+def parse_address(url) -> str:
+    print("Parsing address: ", url)
+
     tree = get_page_tree(url)
 
     address_uid = str(uuid.uuid4())
+    building_address = get_building_address(tree)
 
     address_parsed: Home = {
         "uid": address_uid,
         "url": url,
-        "building_address": get_building_address(tree),
+        "building_address": building_address,
         "neighborhood": get_neighborhood(tree),
         "price_details": get_price_elements(tree),
         "vitals": get_vitals(tree),
@@ -141,9 +144,12 @@ def parse_address(url) -> None:
     with open(f"homehuntr/data/address/{address_uid}.json", "w") as f:
         json.dump(address_parsed, f, indent=4, ensure_ascii=False)
 
+    return address_uid
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", help="url to scrape", required=True)
     args = parser.parse_args()
-    parse_address(args.url)
+    building_address = parse_address(args.url)
+    print("Scraped address: ", building_address)
