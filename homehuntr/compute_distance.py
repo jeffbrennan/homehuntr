@@ -122,7 +122,7 @@ def parse_transit_result(df: DataFrame) -> DataFrame:
     return transit_directions_final
 
 
-def parse_distance(run_type: str):
+def parse_distance(run_type: str = "overwrite"):
     if run_type not in ["append", "overwrite"]:
         raise ValueError(f"run_type must be 'append' or 'overwrite', got {run_type}")
 
