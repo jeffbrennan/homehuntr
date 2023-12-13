@@ -7,6 +7,7 @@ from datetime import datetime as dt
 import argparse
 import uuid
 from pathlib import Path
+import re
 
 
 class PriceElement(TypedDict):
@@ -21,6 +22,12 @@ class Vitals(TypedDict):
     days_on_market: int
 
 
+class BuildingDetails(TypedDict):
+    units: int
+    stories: int
+    year_built: int
+
+
 class Home(TypedDict):
     uid: str
     url: str
@@ -28,7 +35,9 @@ class Home(TypedDict):
     neighborhood: str
     price_details: PriceElement
     vitals: Vitals
+    building_details: BuildingDetails
     amenities: list
+    times_saved: int
 
 
 class CheckResult(TypedDict):
@@ -78,8 +87,25 @@ def get_price_elements(tree: HtmlElement) -> PriceElement:
     price_info = [i.strip() for i in price_element.text_content().split("\n")]
     price_clean = [i.upper() for i in price_info if i != ""]
     if len(price_clean) == 3:
-        price, availability, fee_str = price_clean
-        price_change = "unknown"
+        price_index = [i for i, s in enumerate(price_clean) if "$" in s][0]
+        availability_index = [i for i, s in enumerate(price_clean) if "RENT" in s][0]
+        fee_index = [i for i, s in enumerate(price_clean) if "FEE" in s]
+        change_index = [
+            i for i, s in enumerate(price_clean) if "\u2193" or "\u2191" in s
+        ]
+
+        price = price_clean[price_index]
+        availability = price_clean[availability_index]
+
+        if len(fee_index) == 0:
+            fee_str = "FEE"
+        else:
+            fee_str = price_clean[fee_index[0]]
+
+        if len(change_index) == 0:
+            price_change = "unknown"
+        else:
+            price_change = price_clean[change_index[0]]
     else:
         price_change, price, availability, fee_str = price_clean
 
@@ -102,7 +128,13 @@ def get_price_elements(tree: HtmlElement) -> PriceElement:
 
 
 def get_building_address(tree: HtmlElement) -> str:
-    return tree.xpath("//h1[@class='building-title']")[0].text_content().strip()
+    building_address_raw = tree.xpath("//div[@class='backend_data BuildingInfo-item']")
+    if len(building_address_raw) != 1:
+        raise ValueError("Expecting exactly one building address")
+
+    building_address_text = building_address_raw[0].text_content()
+    building_address = re.sub(r"\s+", " ", building_address_text).strip()
+    return building_address
 
 
 def get_room_elements(tree: HtmlElement) -> list:
@@ -128,6 +160,24 @@ def get_neighborhood(tree: HtmlElement) -> str:
     return neighborhood
 
 
+def get_building_details(tree: HtmlElement) -> BuildingDetails:
+    building_details_raw = tree.xpath(
+        "//li[@class='BuildingInfo-detail horizontal_list']"
+    )
+
+    if len(building_details_raw) != 3:
+        raise ValueError("Expecting exactly three building details")
+
+    units, stories, year_built = [
+        i.text_content().strip() for i in building_details_raw
+    ]
+    return {
+        "units": int(units.split(" ")[0]),
+        "stories": int(stories.split(" ")[0]),
+        "year_built": int(year_built.split(" ")[0]),
+    }
+
+
 def get_vitals(tree: HtmlElement) -> Vitals:
     vitals = tree.xpath("//div[@class='Vitals-detailsInfo']")
     date_available_raw, days_on_market = [
@@ -140,6 +190,18 @@ def get_vitals(tree: HtmlElement) -> Vitals:
             "%Y-%m-%d"
         )
     return {"date_available": date_available, "days_on_market": days_on_market}
+
+
+def get_num_times_saved(tree: HtmlElement) -> int:
+    times_saved = tree.xpath("//div[@class='popularity']")
+
+    if len(times_saved) != 1:
+        raise ValueError("Expecting exactly one element")
+
+    times_saved_text = times_saved[0].text_content()
+    saved_listings = re.findall(r"\d+", times_saved_text)[0]
+
+    return int(saved_listings)
 
 
 def scrape_apartment_url(url) -> ScrapeResult:
@@ -161,7 +223,9 @@ def scrape_apartment_url(url) -> ScrapeResult:
         "neighborhood": get_neighborhood(tree),
         "price_details": get_price_elements(tree),
         "vitals": get_vitals(tree),
+        "building_details": get_building_details(tree),
         "amenities": get_amenities(tree),
+        "times_saved": get_num_times_saved(tree),
     }
 
     with open(f"homehuntr/data/address/{address_uid}.json", "w") as f:
