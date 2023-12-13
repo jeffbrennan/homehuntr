@@ -69,6 +69,10 @@ def parse_stops(df: DataFrame) -> DataFrame:
             "num_transfers",
             F.size(F.col("transit_stops")) - 1,
         )
+        .withColumn(
+            "num_transfers",
+            F.when(F.col("num_transfers") < 0, 0).otherwise(F.col("num_transfers")),
+        )
     )
     return out_df
 
