@@ -30,7 +30,8 @@ def parse_stops(df: DataFrame) -> DataFrame:
             "transit_lines",
             F.array_compact(
                 F.transform(
-                    F.col("steps"), lambda x: x["transit_details"]["line"]["short_name"]
+                    F.col("steps"),
+                    lambda x: x["transit_details"]["line"]["short_name"],
                 )
             ),
         )
@@ -53,12 +54,29 @@ def parse_stops(df: DataFrame) -> DataFrame:
             ),
         )
         .withColumn(
+            "vehicle_type",
+            F.array_compact(
+                F.transform(
+                    F.col("steps"),
+                    lambda x: x["transit_details"]["line"]["vehicle"]["type"],
+                )
+            ),
+        )
+        .withColumn(
             "transit_stops",
             F.transform(
-                F.arrays_zip("transit_lines", "departure_stop", "arrival_stop"),
+                F.arrays_zip(
+                    "vehicle_type",
+                    "transit_lines",
+                    "departure_stop",
+                    "arrival_stop",
+                ),
                 lambda x: F.concat(
+                    F.lit("["),
+                    x["vehicle_type"],
                     x["transit_lines"],
-                    F.lit(":"),
+                    F.lit("]"),
+                    F.lit(" "),
                     x["departure_stop"],
                     F.lit("->"),
                     x["arrival_stop"],
@@ -73,7 +91,11 @@ def parse_stops(df: DataFrame) -> DataFrame:
             "num_transfers",
             F.when(F.col("num_transfers") < 0, 0).otherwise(F.col("num_transfers")),
         )
+        .withColumn("transit_stops", F.concat_ws("; ", F.col("transit_stops")))
+        .withColumn("transit_stops", F.regexp_replace("transit_stops", "BUS", "🚌"))
+        .withColumn("transit_stops", F.regexp_replace("transit_stops", "SUBWAY", "🚂")),
     )
+    out_df = out_df[0]
     return out_df
 
 
@@ -106,7 +128,6 @@ def parse_transit_result(df: DataFrame) -> DataFrame:
             "waiting_min",
             F.col("duration_min") - F.col("walking_min") - F.col("transit_min"),
         )
-        .withColumn("transit_stops", F.concat_ws("; ", F.col("transit_stops")))
     )
 
     transit_directions_final = transit_directions.select(
