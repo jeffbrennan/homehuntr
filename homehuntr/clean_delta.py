@@ -1,10 +1,12 @@
 import pyspark.sql.functions as F
-
+from pyspark.sql import SparkSession
 from common import get_spark
 from delta import DeltaTable
 
 
-def dedupe_delta(delta_path: str, partition_cols: list, order_cols: list):
+def dedupe_delta(
+    spark: SparkSession, delta_path: str, partition_cols: list, order_cols: list
+):
     """
     Utility to remove duplicate rows from a delta table
     """
@@ -33,9 +35,11 @@ def dedupe_delta(delta_path: str, partition_cols: list, order_cols: list):
     delta_table.vacuum(0)
 
 
-spark = get_spark()
-dedupe_delta(
-    delta_path="homehuntr/data/delta/transit_directions",
-    partition_cols=["origin_id", "destination_id"],
-    order_cols=["transit_min"],
-)
+def dedupe_directions():
+    spark = get_spark()
+    dedupe_delta(
+        spark=spark,
+        delta_path="homehuntr/data/delta/transit_directions",
+        partition_cols=["origin_id", "destination_id"],
+        order_cols=["transit_min"],
+    )
