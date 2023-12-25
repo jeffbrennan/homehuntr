@@ -106,6 +106,11 @@ def get_price_elements(tree: HtmlElement) -> PriceElement:
             price_change = "unknown"
         else:
             price_change = price_clean[change_index[0]]
+    elif len(price_clean) == 2:
+        price = price_clean[0]
+        availability = price_clean[1]
+        fee_str = "FEE"
+        price_change = "unknown"
     else:
         price_change, price, availability, fee_str = price_clean
 
