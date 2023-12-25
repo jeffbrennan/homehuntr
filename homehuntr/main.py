@@ -10,18 +10,16 @@ from clean_delta import dedupe_directions
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", help="url to scrape", required=True)
-    args = parser.parse_args()
+    parser.add_argument("--url", help="url to scrape", nargs="*", required=True)
 
-    scraping_result = scrape_apartment_url(args.url)
-    get_directions(uid=scraping_result["uid"])
+    args = parser.parse_args()
+    urls = args.url
+    for url in urls:
+        scraping_result = scrape_apartment_url(url)
+        get_directions(uid=scraping_result["uid"])
 
     parse_distance(run_type="overwrite")
     dedupe_directions()
-
-    # parse_address(address_uid)
-
-    # build_obt()
 
 
 if __name__ == "__main__":
