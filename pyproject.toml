@@ -13,10 +13,12 @@ polars = "^0.19.19"
 pyspark = "^3.5.0"
 delta-spark = "3.0.0"
 lxml = "^4.9.3"
+deltalake = "^0.14.0"
 
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.27.1"
+pandas = "^2.1.4"
 
 [build-system]
 requires = ["poetry-core"]
