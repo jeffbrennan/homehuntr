@@ -130,7 +130,6 @@ def get_directions(address: Optional[str] = None, uid: Optional[str] = None) -> 
         for mode in modes:
             directions_exist = check_if_directions_exist(origin, destination, mode)
             if directions_exist:
-                print("Skipping existing direction - ", origin, destination, mode)
                 continue
             request_directions(origin, destination, mode)
 
