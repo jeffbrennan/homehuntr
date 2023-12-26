@@ -2,6 +2,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.dataframe import DataFrame
 from pyspark.sql import Column
 from common import get_spark
+import os
 
 
 def get_initial_transit_cols(df: DataFrame) -> DataFrame:
@@ -115,12 +116,29 @@ def parse_mode_duration(dur_col: str, mode: str, second_divisor: int) -> Column:
     )
 
 
+def drop_bad_directions(df: DataFrame):
+    paths = (
+        df.select("origin_id", "destination_id")
+        .distinct()
+        .withColumn(
+            "path", F.concat_ws("_", F.col("origin_id"), F.col("destination_id"))
+        )
+        .select("path")
+        .rdd.flatMap(lambda x: x)
+        .collect()
+    )
+
+    for path in paths:
+        os.remove(f"homehuntr/data/directions/{path}_transit.json")
+
+
 def parse_transit_result(df: DataFrame) -> DataFrame:
     transit_initial_selection = get_initial_transit_cols(df)
     parsed_stops = parse_stops(transit_initial_selection)
 
     transit_directions = (
-        parsed_stops.withColumn("distance_mi", F.round(F.col("distance") / 1609.34, 2))
+        parsed_stops.distinct()
+        .withColumn("distance_mi", F.round(F.col("distance") / 1609.34, 2))
         .withColumn("duration_min", F.ceiling(F.col("duration") / 60))
         .withColumn("walking_min", parse_mode_duration("duration", "WALKING", 60))
         .withColumn("transit_min", parse_mode_duration("duration", "TRANSIT", 60))
@@ -129,6 +147,10 @@ def parse_transit_result(df: DataFrame) -> DataFrame:
             F.col("duration_min") - F.col("walking_min") - F.col("transit_min"),
         )
     )
+
+    bad_directions = transit_directions.filter(F.col("duration_min") > 120)
+    if bad_directions.count() > 0:
+        drop_bad_directions(bad_directions)
 
     transit_directions_final = transit_directions.select(
         "origin_id",
