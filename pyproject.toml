@@ -14,6 +14,8 @@ pyspark = "^3.5.0"
 delta-spark = "3.0.0"
 lxml = "^4.9.3"
 deltalake = "^0.14.0"
+dash = "^2.14.2"
+nbformat = "^5.9.2"
 
 
 [tool.poetry.group.dev.dependencies]
