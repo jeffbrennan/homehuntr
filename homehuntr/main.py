@@ -5,9 +5,45 @@ from compute_distance import parse_distance
 from clean_delta import dedupe_directions
 from datetime import datetime as dt
 import polars as pl
+import os
 
 # from clean_address import clean_address
 # from create_obt import build_obt
+
+
+def handle_missing_directions():
+    """
+    Can occur when the direction api produces an unexpected result or a new destination is added to the list
+    Need to compare direction routing against actual and run the missing ones
+    """
+    destination_path = "homehuntr/data/destinations/destinations.json"
+    destination_place_ids = pl.read_json(destination_path)["place_id"].to_list()
+
+    origin_path = "homehuntr/data/address"
+    origin_place_ids = (
+        pl.concat(
+            [pl.read_json(f"{origin_path}/{i}") for i in os.listdir(origin_path)],
+            how="diagonal",
+        )
+        .select("place_id")
+        .filter(pl.col("place_id").is_not_null())
+        .unique()["place_id"]
+        .to_list()
+    )
+
+    direction_types = ["bicycling", "transit"]
+
+    expected_directions = []
+    for origin in origin_place_ids:
+        for destination in destination_place_ids:
+            for direction_type in direction_types:
+                expected_directions.append(
+                    f"{origin}_{destination}_{direction_type}.json"
+                )
+
+    actual_directions = os.listdir("homehuntr/data/directions")
+
+    missing_directions = list(set(expected_directions) - set(actual_directions))
 
 
 def main():
@@ -50,6 +86,9 @@ def main():
         .with_columns(today=pl.lit(dt.now()))
         .with_columns(days_since_modified=pl.col("date_modified") - pl.lit(dt.now()))
     )
+
+    all_urls = url_df["link"].to_list()
+    handle_missing_directions(all_urls)
 
     urls_to_scrape = url_df.filter(
         pl.col("date_modified").is_null()
