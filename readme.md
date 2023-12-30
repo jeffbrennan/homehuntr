@@ -39,3 +39,8 @@ Price and amenities
       dedupe_directions-->delta/transit_directions;
       end;
 ```
+
+# TODOS
+
+- handle missing data / malformed data from tarnsit api
+- should identify bad values and remove them from dataset, then next time run, should recompute those values
