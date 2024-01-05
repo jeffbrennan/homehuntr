@@ -80,6 +80,11 @@ def main():
         .with_columns(rn=pl.col("date_added").cumcount().over("link"))
         .filter(pl.col("rn") == 0)
         .drop("rn")
+        .with_columns(
+            date_added=pl.when(pl.col("date_added").is_null())
+            .then(pl.lit(dt.now()))
+            .otherwise(pl.col("date_added"))
+        )
     )
 
     combined_df.write_csv("homehuntr/data/links/links.csv")
