@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import argparse
 from typing import TypedDict
-from travel import get_place_id
+from travel import get_address_details
 
 
 class Destination(TypedDict):
@@ -51,7 +51,7 @@ def main() -> None:
     if isinstance(address_name, list):
         raise ValueError("Address name must be a single address name")
 
-    place_id = get_place_id(address)
+    place_id = get_address_details(address)
 
     if place_id is None:
         raise ValueError(f"Place ID not found for {address}. Exiting.")

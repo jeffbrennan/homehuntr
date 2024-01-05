@@ -20,7 +20,7 @@ def validate_response(response: requests.Response) -> None:
         raise ValueError(f"{response.status_code}")
 
 
-def get_place_id(address: str) -> Optional[str]:
+def get_address_details(address: str) -> dict[str, str]:
     load_dotenv()
     MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
     request_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
@@ -28,13 +28,21 @@ def get_place_id(address: str) -> Optional[str]:
     params = {
         "input": address,
         "inputtype": "textquery",
-        "fields": "place_id",
+        "fields": "place_id,geometry",
         "key": MAPS_API_KEY,
     }
     print(f"Requesting place id for {address}")
     response = requests.get(request_url, params=params)
     validate_response(response)
-    return response.json()["candidates"][0]["place_id"]
+
+    response_address = response.json()["candidates"][0]
+
+    output = {
+        "place_id": response_address["place_id"],
+        "place_lat": response_address["geometry"]["location"]["lat"],
+        "place_lng": response_address["geometry"]["location"]["lng"],
+    }
+    return output
 
 
 def request_directions(origin: Place, destination: Place, mode: str) -> None:
@@ -93,19 +101,22 @@ def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Plac
         if address is None:
             raise ValueError("Could not resolve address")
 
-        if "place_id" in address_data:
+        if "place_id" in address_data and "place_lat" in address_data:
             place_id = address_data["place_id"]
         else:
-            place_id = get_place_id(address)
+            details = get_address_details(address)
+            place_id = details["place_id"]
             if place_id is None:
                 raise ValueError("Could not resolve place id")
             address_data["place_id"] = place_id
+            address_data["place_lat"] = details["place_lat"]
+            address_data["place_lng"] = details["place_lng"]
             with open(home_path, "w") as f:
                 json.dump(address_data, f, indent=4, ensure_ascii=False)
 
     if uid is None and address is not None:
         # when get_directions is called independently, we need to get the place_id
-        place_id = get_place_id(address)
+        place_id = get_address_details(address)
 
     if place_id is None:
         raise ValueError("Could not resolve place id")
