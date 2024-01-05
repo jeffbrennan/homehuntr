@@ -1,6 +1,6 @@
 import argparse
 from scrape_streeteasy import scrape_apartment_url
-from travel import get_directions, request_directions
+from travel import get_directions, request_directions, Place
 from compute_distance import parse_distance
 from clean_delta import dedupe_directions
 from datetime import datetime as dt
@@ -20,12 +20,13 @@ def handle_missing_directions() -> None:
     destination_place_ids = pl.read_json(destination_path)["place_id"].to_list()
 
     origin_path = "homehuntr/data/address"
+    origin_data = pl.concat(
+        [pl.read_json(f"{origin_path}/{i}") for i in os.listdir(origin_path)],
+        how="diagonal",
+    )
+
     origin_place_ids = (
-        pl.concat(
-            [pl.read_json(f"{origin_path}/{i}") for i in os.listdir(origin_path)],
-            how="diagonal",
-        )
-        .select("place_id")
+        origin_data.select("place_id")
         .filter(pl.col("place_id").is_not_null())
         .unique()["place_id"]
         .to_list()
@@ -33,7 +34,7 @@ def handle_missing_directions() -> None:
 
     direction_types = ["bicycling", "transit"]
 
-    expected_directions = []
+    expected_directions: list[str] = []
     for origin in origin_place_ids:
         for destination in destination_place_ids:
             for direction_type in direction_types:
@@ -41,15 +42,33 @@ def handle_missing_directions() -> None:
                     f"{origin}_{destination}_{direction_type}.json"
                 )
 
-    actual_directions = os.listdir("homehuntr/data/directions")
+    actual_directions: list[str] = os.listdir("homehuntr/data/directions")
 
     missing_directions = list(set(expected_directions) - set(actual_directions))
     if len(missing_directions) == 0:
         return
 
     for missing_direction in missing_directions:
-        origin, destination, direction_type = missing_direction.split("_")
-        print(f"Requesting {origin}->{destination} [{direction_type}]")
+        origin_id, destination_id, direction_type = missing_direction.split("_")
+        origin_address = origin_data.filter(pl.col("place_id") == origin_id)[
+            "building_address"
+        ].to_list()[0]
+
+        destination_address = pl.read_json(destination_path).filter(
+            pl.col("place_id") == destination_id
+        )["address"][0]
+
+        origin: Place = {
+            "place_id": origin_id,
+            "address": origin_address,
+        }
+
+        destination: Place = {
+            "place_id": destination_id,
+            "address": destination_address,
+        }
+
+        print(f"Requesting {origin_address}->{destination_address} [{direction_type}]")
         request_directions(origin=origin, destination=destination, mode=direction_type)
 
 
@@ -77,7 +96,7 @@ def main():
     current_df = pl.read_csv("homehuntr/data/links/links.csv")
     combined_df = (
         pl.concat([current_df, new_url_df], how="diagonal")
-        .with_columns(rn=pl.col("date_added").cumcount().over("link"))
+        .with_columns(rn=pl.col("date_added").cum_count().over("link"))
         .filter(pl.col("rn") == 0)
         .drop("rn")
         .with_columns(
