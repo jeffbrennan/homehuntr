@@ -12,6 +12,12 @@ class Place(TypedDict):
     address: str
 
 
+class AddressDetails(TypedDict):
+    place_id: str
+    place_lat: str
+    place_lng: str
+
+
 def validate_response(response: requests.Response) -> None:
     if response.json()["status"] != "OK":
         raise ValueError(response.json()["status"])
@@ -20,7 +26,7 @@ def validate_response(response: requests.Response) -> None:
         raise ValueError(f"{response.status_code}")
 
 
-def get_address_details(address: str) -> dict[str, str]:
+def get_address_details(address: str) -> AddressDetails:
     load_dotenv()
     MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
     request_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
@@ -37,12 +43,11 @@ def get_address_details(address: str) -> dict[str, str]:
 
     response_address = response.json()["candidates"][0]
 
-    output = {
+    return {
         "place_id": response_address["place_id"],
         "place_lat": response_address["geometry"]["location"]["lat"],
         "place_lng": response_address["geometry"]["location"]["lng"],
     }
-    return output
 
 
 def request_directions(origin: Place, destination: Place, mode: str) -> None:
@@ -87,11 +92,11 @@ def get_destinations() -> list[Place]:
 
 
 def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Place:
+    """
+    Obtains details about an address given either an address string or a uid (existing address)
+    """
     place_id = None
-    if address is None and uid is None:
-        raise ValueError("Must provide either origin or uid")
 
-    # TODO: fix spaghetti
     if uid is not None:
         # when get_directions is called as part of pipeline, we need to get the address, place_id
         home_path = Path(__file__).parent / "data" / "address" / f"{uid}.json"
@@ -101,28 +106,40 @@ def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Plac
         if address is None:
             raise ValueError("Could not resolve address")
 
-        if "place_id" in address_data and "place_lat" in address_data:
+        data_elements = ["place_id", "address", "place_lat", "place_lng"]
+        data_complete = all([x in address_data for x in data_elements])
+        if data_complete:
             place_id = address_data["place_id"]
-        else:
-            details = get_address_details(address)
-            place_id = details["place_id"]
-            if place_id is None:
-                raise ValueError("Could not resolve place id")
-            address_data["place_id"] = place_id
-            address_data["place_lat"] = details["place_lat"]
-            address_data["place_lng"] = details["place_lng"]
-            with open(home_path, "w") as f:
-                json.dump(address_data, f, indent=4, ensure_ascii=False)
+            return {
+                "place_id": address_data["place_id"],
+                "address": address,
+            }
 
-    if uid is None and address is not None:
-        # when get_directions is called independently, we need to get the place_id
-        place_id = get_address_details(address)
+        # missing either place_id or place geolocation
+        details = get_address_details(address)
+        data_complete = all([x in details for x in data_elements])
+        address_info = {
+            "place_id": place_id,
+            "place_lat": details["place_lat"],
+            "place_lng": details["place_lng"],
+        }
+        address_data.update(address_info)
 
-    if place_id is None:
-        raise ValueError("Could not resolve place id")
+        with open(home_path, "w") as f:
+            json.dump(address_data, f, indent=4, ensure_ascii=False)
+
+        return {
+            "place_id": address_data["place_id"],
+            "address": address_data["address"],
+        }
 
     if address is None:
         raise ValueError("Could not resolve address")
+
+    address_details = get_address_details(address)
+    place_id = address_details["place_id"]
+    if place_id is None:
+        raise ValueError("Could not resolve place id")
 
     origin: Place = {"place_id": place_id, "address": address}
     return origin
