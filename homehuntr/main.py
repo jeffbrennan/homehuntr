@@ -1,6 +1,6 @@
 import argparse
 from scrape_streeteasy import scrape_apartment_url
-from travel import get_directions
+from travel import get_directions, request_directions
 from compute_distance import parse_distance
 from clean_delta import dedupe_directions
 from datetime import datetime as dt
@@ -11,7 +11,7 @@ import os
 # from create_obt import build_obt
 
 
-def handle_missing_directions():
+def handle_missing_directions() -> None:
     """
     Can occur when the direction api produces an unexpected result or a new destination is added to the list
     Need to compare direction routing against actual and run the missing ones
@@ -44,24 +44,36 @@ def handle_missing_directions():
     actual_directions = os.listdir("homehuntr/data/directions")
 
     missing_directions = list(set(expected_directions) - set(actual_directions))
+    if len(missing_directions) == 0:
+        return
+
+    for missing_direction in missing_directions:
+        origin, destination, direction_type = missing_direction.split("_")
+        print(f"Requesting {origin}->{destination} [{direction_type}]")
+        request_directions(origin=origin, destination=destination, mode=direction_type)
 
 
 def main():
     recheck_interval_days = 5
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", help="url to scrape", nargs="*", required=False)
+    parser.add_argument(
+        "--refresh-directions",
+        help="refresh directions",
+        action="store_true",
+        required=False,
+    )
 
     args = parser.parse_args()
-    new_urls = args.url
-
-    if new_urls is not None:
+    if args.url is not None:
         new_url_data = [
             {"link": url, "date_added": f"{dt.now()}", "date_modified": None}
-            for url in new_urls
+            for url in args.url
         ]
         new_url_df = pl.DataFrame(new_url_data)
     else:
         new_url_df = pl.DataFrame([])
+
     current_df = pl.read_csv("homehuntr/data/links/links.csv")
     combined_df = (
         pl.concat([current_df, new_url_df], how="diagonal")
@@ -87,18 +99,22 @@ def main():
         .with_columns(days_since_modified=pl.col("date_modified") - pl.lit(dt.now()))
     )
 
-    all_urls = url_df["link"].to_list()
-    handle_missing_directions(all_urls)
+    handle_missing_directions()
+    new_urls = url_df.filter(pl.col("date_modified").is_null())["link"].to_list()
+    stale_urls = url_df.filter(pl.col("days_since_modified") > recheck_interval_days)[
+        "link"
+    ].to_list()
 
-    urls_to_scrape = url_df.filter(
-        pl.col("date_modified").is_null()
-        | (pl.col("days_since_modified") > recheck_interval_days)
-    )["link"].to_list()
+    if len(new_urls) > 0:
+        for url in new_urls:
+            scraping_result = scrape_apartment_url(url)
+            get_directions(uid=scraping_result["uid"])
 
-    for url in urls_to_scrape:
-        scraping_result = scrape_apartment_url(url)
-        get_directions(uid=scraping_result["uid"])
-
+    if len(stale_urls) > 0:
+        for url in stale_urls:
+            scraping_result = scrape_apartment_url(url)
+            if args.refresh_directions:
+                get_directions(uid=scraping_result["uid"])
     parse_distance(run_type="overwrite")
     dedupe_directions()
 
