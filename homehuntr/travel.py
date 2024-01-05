@@ -130,7 +130,7 @@ def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Plac
 
         return {
             "place_id": address_data["place_id"],
-            "address": address_data["address"],
+            "address": address_data["building_address"],
         }
 
     if address is None:
