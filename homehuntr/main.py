@@ -20,10 +20,10 @@ def handle_missing_directions() -> None:
     destination_place_ids = pl.read_json(destination_path)["place_id"].to_list()
 
     origin_path = "homehuntr/data/address"
-    origin_data = pl.concat(
-        [pl.read_json(f"{origin_path}/{i}") for i in os.listdir(origin_path)],
-        how="diagonal",
-    )
+    all_origin_dfs = [
+        pl.read_json(f"{origin_path}/{i}") for i in os.listdir(origin_path)
+    ]
+    origin_data = pl.concat(all_origin_dfs, how="diagonal_relaxed")
 
     origin_place_ids = (
         origin_data.select("place_id")
@@ -73,6 +73,16 @@ def handle_missing_directions() -> None:
         request_directions(origin=origin, destination=destination, mode=direction_type)
 
 
+def update_last_modified(url_df: pl.DataFrame, url: str) -> pl.DataFrame:
+    url_df = url_df.with_columns(
+        date_modified=pl.when(pl.col("link") == url)
+        .then(pl.lit(dt.now()))
+        .otherwise(pl.col("date_modified"))
+    )
+    url_df.write_csv("homehuntr/data/links/links.csv")
+    return url_df
+
+
 def main():
     recheck_interval_days = 5
     parser = argparse.ArgumentParser()
@@ -85,6 +95,11 @@ def main():
     )
 
     args = parser.parse_args()
+
+    refresh_directions = False
+    if args.refresh_directions:
+        refresh_directions = True
+
     if args.url is not None:
         new_url_data = [
             {"link": url, "date_added": f"{dt.now()}", "date_modified": None}
@@ -112,12 +127,12 @@ def main():
     url_df = (
         combined_df.with_columns(
             date_added=pl.col("date_added").str.strptime(
-                pl.Datetime, format="%Y-%m-%d %H:%M:%S%.f"
+                pl.Datetime, format="%Y-%m-%dT%H:%M:%S%.f"
             )
         )
         .with_columns(
             date_modified=pl.col("date_modified").str.strptime(
-                pl.Datetime, format="%Y-%m-%d %H:%M:%S%.f"
+                pl.Datetime, format="%Y-%m-%dT%H:%M:%S%.f"
             )
         )
         .with_columns(today=pl.lit(dt.now()))
@@ -129,17 +144,24 @@ def main():
     stale_urls = url_df.filter(pl.col("days_since_modified") > recheck_interval_days)[
         "link"
     ].to_list()
+    url_df = url_df.drop("today", "days_since_modified")
 
+    # new urls need to be scraped and have directions requested
     if len(new_urls) > 0:
         for url in new_urls:
             scraping_result = scrape_apartment_url(url)
-            get_directions(uid=scraping_result["uid"])
+            get_directions(uid=scraping_result["uid"], refresh_directions=True)
+            url_df = update_last_modified(url_df, url)
 
+    # stale urls need to have directions requested only if refresh_directions is True
     if len(stale_urls) > 0:
         for url in stale_urls:
             scraping_result = scrape_apartment_url(url)
-            if args.refresh_directions:
-                get_directions(uid=scraping_result["uid"])
+            get_directions(
+                uid=scraping_result["uid"], refresh_directions=refresh_directions
+            )
+            url_df = update_last_modified(url_df, url)
+
     parse_distance(run_type="overwrite")
     dedupe_directions()
 
