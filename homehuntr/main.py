@@ -49,6 +49,7 @@ def handle_missing_directions() -> None:
         return
 
     for missing_direction in missing_directions:
+        missing_direction = missing_direction.replace(".json", "")
         origin_id, destination_id, direction_type = missing_direction.split("_")
         origin_address = origin_data.filter(pl.col("place_id") == origin_id)[
             "building_address"
