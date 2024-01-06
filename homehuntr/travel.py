@@ -108,8 +108,7 @@ def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Plac
 
         data_elements = ["place_id", "address", "place_lat", "place_lng"]
         data_complete = all([x in address_data for x in data_elements])
-        if data_complete:
-            place_id = address_data["place_id"]
+        if data_complete and address_data["place_id"] is not None:
             return {
                 "place_id": address_data["place_id"],
                 "address": address,
@@ -117,9 +116,9 @@ def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Plac
 
         # missing either place_id or place geolocation
         details = get_address_details(address)
-        data_complete = all([x in details for x in data_elements])
+        # data_complete = all([x in details for x in data_elements])
         address_info = {
-            "place_id": place_id,
+            "place_id": details["place_id"],
             "place_lat": details["place_lat"],
             "place_lng": details["place_lng"],
         }
@@ -145,13 +144,19 @@ def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Plac
     return origin
 
 
-def get_directions(address: Optional[str] = None, uid: Optional[str] = None) -> None:
+def get_directions(
+    address: Optional[str] = None,
+    uid: Optional[str] = None,
+    refresh_directions: bool = False,
+) -> None:
     """
     address argument: get_directions being called independently
     uid argment: get_directions being called as part of pipeline from main.py
     """
     modes = ["transit", "bicycling"]
     origin = get_origin(address, uid)
+    if not refresh_directions:
+        return
     destinations = get_destinations()
 
     for destination in destinations:
