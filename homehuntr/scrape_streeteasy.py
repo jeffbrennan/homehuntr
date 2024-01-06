@@ -2,7 +2,7 @@ import json
 import requests
 from lxml import html
 from lxml.html import HtmlElement
-from typing import TypedDict
+from typing import TypedDict, Optional
 from datetime import datetime as dt
 import argparse
 import uuid
@@ -15,11 +15,13 @@ class PriceElement(TypedDict):
     price: int
     availability: str
     is_fee: bool
+    rented: bool
+    rented_days_ago: Optional[str]
 
 
 class Vitals(TypedDict):
-    date_available: str
-    days_on_market: int
+    date_available: Optional[str]
+    days_on_market: Optional[int]
 
 
 class BuildingDetails(TypedDict):
@@ -86,6 +88,9 @@ def get_price_elements(tree: HtmlElement) -> PriceElement:
     price_element = tree.xpath("//div[@class='details_info_price']")[0]
     price_info = [i.strip() for i in price_element.text_content().split("\n")]
     price_clean = [i.upper() for i in price_info if i != ""]
+
+    rented = False
+    rented_days_ago = None
     if len(price_clean) == 3:
         price_index = [i for i, s in enumerate(price_clean) if "$" in s][0]
         availability_index = [i for i, s in enumerate(price_clean) if "RENT" in s][0]
@@ -111,6 +116,11 @@ def get_price_elements(tree: HtmlElement) -> PriceElement:
         availability = price_clean[1]
         fee_str = "FEE"
         price_change = "unknown"
+    elif len(price_clean) == 5:
+        fee_str = "FEE"
+        price_change, price, availability, rented_str, rented_days_ago = price_clean
+        rented = rented_str == "RENTED"
+
     else:
         price_change, price, availability, fee_str = price_clean
 
@@ -129,6 +139,8 @@ def get_price_elements(tree: HtmlElement) -> PriceElement:
         "price": price,
         "availability": availability,
         "is_fee": fee,
+        "rented": rented,
+        "rented_days_ago": rented_days_ago,
     }
 
 
@@ -190,6 +202,9 @@ def get_vitals(tree: HtmlElement) -> Vitals:
     ]
     if date_available_raw.upper() == "AVAILABLE NOW":
         date_available = dt.today().strftime("%Y-%m-%d")
+    elif "No Longer Available" in date_available_raw:
+        date_available = None
+        days_on_market = None
     else:
         date_available = dt.strptime(date_available_raw, "%m/%d/%Y").strftime(
             "%Y-%m-%d"
