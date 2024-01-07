@@ -42,5 +42,4 @@ Price and amenities
 
 # TODOS
 
-- handle missing data / malformed data from tarnsit api
-- should identify bad values and remove them from dataset, then next time run, should recompute those values
+- [ ] transition all writes to gcp
