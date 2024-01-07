@@ -3,10 +3,13 @@ from pathlib import Path
 import argparse
 from typing import TypedDict
 from travel import get_address_details
+import gcsfs
 
 
 class Destination(TypedDict):
     place_id: str
+    place_lat: str
+    place_lng: str
     address: str
     person: str | list[str]
     address_type: str | list[str]
@@ -51,13 +54,15 @@ def main() -> None:
     if isinstance(address_name, list):
         raise ValueError("Address name must be a single address name")
 
-    place_id = get_address_details(address)
+    results = get_address_details(address)
 
-    if place_id is None:
+    if results["place_id"] is None:
         raise ValueError(f"Place ID not found for {address}. Exiting.")
 
     new_destination: Destination = {
-        "place_id": place_id,
+        "place_id": results["place_id"],
+        "place_lat": results["place_lat"],
+        "place_lng": results["place_lng"],
         "address": address,
         "person": person,
         "address_type": address_type,
@@ -65,18 +70,15 @@ def main() -> None:
         "weight": float(args.weight),
     }
 
-    with open(
-        Path(__file__).parent / "data" / "destinations" / "destinations.json"
-    ) as f:
+    destination_path = "gs://homehuntr-storage/destinations/destinations.json"
+    fs = gcsfs.GCSFileSystem(project="homehuntr")
+    with fs.open(destination_path, "rb") as f:
         destination_data = json.load(f)
 
     destination_data.append(new_destination)
 
-    with open(
-        Path(__file__).parent / "data" / "destinations" / "destinations.json", "w"
-    ) as f:
+    with fs.open(destination_path, "wb") as f:
         json.dump(destination_data, f, indent=4)
-
     print(f"Added {address} to destinations.json")
 
 

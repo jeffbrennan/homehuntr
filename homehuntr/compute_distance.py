@@ -1,7 +1,9 @@
+from dotenv import load_dotenv
 import pyspark.sql.functions as F
 from pyspark.sql.dataframe import DataFrame
 from pyspark.sql import Column
 from common import get_spark
+import gcsfs
 import os
 
 
@@ -128,8 +130,10 @@ def drop_bad_directions(df: DataFrame):
         .collect()
     )
 
+    load_dotenv()
+    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
     for path in paths:
-        os.remove(f"homehuntr/data/directions/{path}_transit.json")
+        fs.rm(f"gs://homehuntr-storage/directions/{path}_transit.json")
 
 
 def parse_transit_result(df: DataFrame) -> DataFrame:
@@ -171,17 +175,21 @@ def parse_transit_result(df: DataFrame) -> DataFrame:
 
 def parse_distance(run_type: str = "overwrite"):
     if run_type not in ["append", "overwrite"]:
-        raise ValueError(f"run_type must be 'append' or 'overwrite', got {run_type}")
+        raise ValueError(f"run_type must be  'append' or 'overwrite', got {run_type}")
 
     spark = get_spark()
-    transit_directions_raw = spark.read.json(
-        "homehuntr/data/directions/*_transit.json", multiLine=True
+
+    transit_directions_raw = (
+        spark.read.json("gs://homehuntr-storage/directions/", multiLine=True)
+        .withColumn("file_path", F.input_file_name())
+        .filter(F.col("file_path").contains("%20transit.json"))
+        .drop("file_path")
     )
     transit_directions_final = parse_transit_result(transit_directions_raw)
 
     transit_directions_final.show(10, False)
     transit_directions_final.write.format("delta").mode(run_type).save(
-        "homehuntr/data/delta/transit_directions"
+        "gs://homehuntr-storage/delta/transit_directions"
     )
 
 

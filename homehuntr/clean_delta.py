@@ -39,7 +39,7 @@ def dedupe_directions():
     spark = get_spark()
     dedupe_delta(
         spark=spark,
-        delta_path="homehuntr/data/delta/transit_directions",
+        delta_path="gs://homehuntr-storage/delta/transit_directions",
         partition_cols=["origin_id", "destination_id"],
         order_cols=["transit_min"],
     )

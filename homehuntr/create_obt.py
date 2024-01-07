@@ -1,7 +1,7 @@
 import polars as pl
-import pathlib
 import os
 from dotenv import load_dotenv
+import gcsfs
 
 
 def normalize_data(col: pl.Expr) -> pl.Expr:
@@ -87,39 +87,35 @@ def clean_address(df: pl.DataFrame) -> pl.DataFrame:
     return address_cleaned
 
 
-def get_clean_address():
-    address_base_path = (
-        pathlib.Path(os.path.abspath("")) / "homehuntr" / "data" / "address"
-    )
-    all_addresses = os.listdir(address_base_path)
-    address_info_dfs = [pl.read_json(f"{address_base_path}/{i}") for i in all_addresses]
+def get_clean_address(fs: gcsfs.GCSFileSystem):
+    address_base_path = "gs://homehuntr-storage/address"
+    all_addresses = fs.ls(address_base_path)
+    address_info_dfs = []
+    for i in all_addresses:
+        with fs.open(f"{address_base_path}/{i}", "rb") as f:
+            address_info_dfs.append(pl.read_json(f))
     address_info = pl.concat(address_info_dfs, how="diagonal")
     address_cleaned = clean_address(address_info)
     return address_cleaned
 
 
-def get_direction_df():
-    direction_path = (
-        pathlib.Path(os.path.abspath(""))
-        / "homehuntr"
-        / "data"
-        / "delta"
-        / "transit_directions"
-    )
-    direction_info = (
-        pl.read_delta(str(direction_path))
-        .sort("origin_id")
-        .filter(~pl.col("origin_name").str.contains("591"))
-    )
+def get_direction_df(fs: gcsfs.GCSFileSystem):
+    direction_path = "gs://homehuntr-storage/delta/transit_directions"
+    with fs.open(direction_path, "rb") as f:
+        direction_info = (
+            pl.read_delta(f)  # type: ignore
+            .sort("origin_id")
+            .filter(~pl.col("origin_name").str.contains("591"))
+        )
+
     return direction_info
 
 
-def get_destination_df():
-    destination_path = (
-        pathlib.Path(os.path.abspath("")) / "homehuntr" / "data" / "destinations"
-    )
-    destination_files = os.listdir(destination_path)
-    destination_info_raw = pl.read_json(f"{destination_path}/{destination_files[0]}")
+def get_destination_df(fs: gcsfs.GCSFileSystem):
+    destination_path = "gs://homehuntr-storage/destinations"
+    destination_files = fs.ls(destination_path)
+    with fs.open(f"{destination_path}/{destination_files[0]}", "rb") as f:
+        destination_info_raw = pl.read_json(f)  # type: ignore
 
     destination_info = (
         destination_info_raw.drop("address")
@@ -333,11 +329,13 @@ def summarize_scores(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def main() -> None:
-    out_base_path = pathlib.Path(os.path.abspath("")).parent / "data" / "delta" / "gold"
+    out_base_path = "gs://homehuntr-storage/delta/gold"
+    load_dotenv()
+    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
 
-    address_cleaned = get_clean_address()
-    direction_df = get_direction_df()
-    destination_df = get_destination_df()
+    address_cleaned = get_clean_address(fs)
+    direction_df = get_direction_df(fs)
+    destination_df = get_destination_df(fs)
     transit_score_df = get_transit_score(
         direction_info=direction_df, destination_info=destination_df
     )
@@ -349,13 +347,17 @@ def main() -> None:
     )
     summary_df = summarize_scores(obt)
 
-    address_cleaned.write_delta(
-        out_base_path / "apartment_details", mode="overwrite", overwrite_schema=True
-    )
-    transit_score_df.write_delta(out_base_path / "transit_score", mode="overwrite")
-    summary_df.write_delta(out_base_path / "summary", mode="overwrite")
+    with fs.open(f"{out_base_path}/apartment_details", "wb") as f:
+        address_cleaned.write_delta(f)  # type: ignore
 
-    obt.write_delta(out_base_path / "obt", mode="overwrite", overwrite_schema=True)
+    with fs.open(f"{out_base_path}/transit_score", "wb") as f:
+        transit_score_df.write_delta(f)  # type: ignore
+
+    with fs.open(f"{out_base_path}/summary", "wb") as f:
+        summary_df.write_delta(f)  # type: ignore
+
+    with fs.open(f"{out_base_path}/obt", "wb") as f:
+        obt.write_delta(f)  # type: ignore
 
 
 if __name__ == "__main__":

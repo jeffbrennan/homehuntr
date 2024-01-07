@@ -2,9 +2,9 @@ import requests
 import os
 from dotenv import load_dotenv
 import json
-from pathlib import Path
 import argparse
 from typing import Optional, TypedDict
+import gcsfs
 
 
 class Place(TypedDict):
@@ -50,7 +50,9 @@ def get_address_details(address: str) -> AddressDetails:
     }
 
 
-def request_directions(origin: Place, destination: Place, mode: str) -> None:
+def request_directions(
+    origin: Place, destination: Place, mode: str, fs: gcsfs.GCSFileSystem
+) -> None:
     load_dotenv()
     MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
     request_url = "https://maps.googleapis.com/maps/api/directions/json"
@@ -67,22 +69,25 @@ def request_directions(origin: Place, destination: Place, mode: str) -> None:
     response = requests.get(request_url, params=params)
     validate_response(response)
 
-    dump_directions(response.json(), origin, destination, mode)
+    dump_directions(response.json(), origin, destination, mode, fs)
 
 
 def dump_directions(
-    directions: dict, origin: Place, destination: Place, mode: str
+    directions: dict,
+    origin: Place,
+    destination: Place,
+    mode: str,
+    fs: gcsfs.GCSFileSystem,
 ) -> None:
-    file_name = f"{origin['place_id']}_{destination['place_id']}_{mode}"
-    output_path = Path(__file__).parent / "data" / "directions" / f"{file_name}.json"
-    with open(output_path, "w") as f:
+    file_name = f"{origin['place_id']} {destination['place_id']} {mode}"
+    output_path = f"gs://homehuntr-storage/directions/{file_name}.json"
+    with fs.open(output_path, "w") as f:
         json.dump(directions, f)
 
 
-def get_destinations() -> list[Place]:
-    with open(
-        Path(__file__).parent / "data" / "destinations" / "destinations.json"
-    ) as f:
+def get_destinations(fs: gcsfs.GCSFileSystem) -> list[Place]:
+    destination_path = "gs://homehuntr-storage/destinations/destinations.json"
+    with fs.open(destination_path) as f:
         destination_data = json.load(f)
 
     destinations: list[Place] = [
@@ -91,7 +96,9 @@ def get_destinations() -> list[Place]:
     return destinations
 
 
-def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Place:
+def get_origin(
+    fs: gcsfs.GCSFileSystem, address: Optional[str] = None, uid: Optional[str] = None
+) -> Place:
     """
     Obtains details about an address given either an address string or a uid (existing address)
     """
@@ -99,9 +106,10 @@ def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Plac
 
     if uid is not None:
         # when get_directions is called as part of pipeline, we need to get the address, place_id
-        home_path = Path(__file__).parent / "data" / "address" / f"{uid}.json"
-        with open(home_path) as f:
+        home_path = f"gs://homehuntr-storage/address/{uid}.json"
+        with fs.open(home_path) as f:
             address_data = json.load(f)
+
         address = address_data["building_address"]
         if address is None:
             raise ValueError("Could not resolve address")
@@ -116,7 +124,6 @@ def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Plac
 
         # missing either place_id or place geolocation
         details = get_address_details(address)
-        # data_complete = all([x in details for x in data_elements])
         address_info = {
             "place_id": details["place_id"],
             "place_lat": details["place_lat"],
@@ -124,7 +131,7 @@ def get_origin(address: Optional[str] = None, uid: Optional[str] = None) -> Plac
         }
         address_data.update(address_info)
 
-        with open(home_path, "w") as f:
+        with fs.open(home_path, "w") as f:
             json.dump(address_data, f, indent=4, ensure_ascii=False)
 
         return {
@@ -154,23 +161,26 @@ def get_directions(
     uid argment: get_directions being called as part of pipeline from main.py
     """
     modes = ["transit", "bicycling"]
-    origin = get_origin(address, uid)
+
+    load_dotenv()
+    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
+    origin = get_origin(fs, address, uid)
     if not refresh_directions:
         return
-    destinations = get_destinations()
+    destinations = get_destinations(fs)
 
     for destination in destinations:
         for mode in modes:
-            directions_exist = check_if_directions_exist(origin, destination, mode)
+            directions_exist = check_if_directions_exist(origin, destination, mode, fs)
             if directions_exist:
                 continue
-            request_directions(origin, destination, mode)
+            request_directions(origin, destination, mode, fs)
 
 
-def check_if_directions_exist(origin: Place, destination: Place, mode: str) -> bool:
+def check_if_directions_exist(origin: Place, destination: Place, mode: str, fs) -> bool:
     file_name = f"{origin['place_id']}_{destination['place_id']}_{mode}"
-    output_path = Path(__file__).parent / "data" / "directions" / f"{file_name}.json"
-    return output_path.exists()
+    output_path = f"gs://homehuntr-storage/directions/{file_name}.json"
+    return output_path in fs.ls("homehuntr-storage/directions")
 
 
 def main() -> None:

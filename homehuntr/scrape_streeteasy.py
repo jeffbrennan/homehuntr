@@ -1,4 +1,6 @@
 import json
+import os
+from dotenv import load_dotenv
 import requests
 from lxml import html
 from lxml.html import HtmlElement
@@ -8,6 +10,7 @@ import argparse
 import uuid
 from pathlib import Path
 import re
+import gcsfs
 
 
 class PriceElement(TypedDict):
@@ -248,7 +251,10 @@ def scrape_apartment_url(url) -> ScrapeResult:
         "times_saved": get_num_times_saved(tree),
     }
 
-    with open(f"homehuntr/data/address/{address_uid}.json", "w") as f:
+    address_path = f"gs://homehuntr-storage/address/{address_uid}.json"
+    load_dotenv()
+    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
+    with fs.open(address_path, "w") as f:
         json.dump(address_parsed, f, indent=4, ensure_ascii=False)
 
     print("Scraped address: ", building_address)
