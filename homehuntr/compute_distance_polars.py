@@ -1,5 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor
 import polars as pl
 import gcsfs
+import os
+from itertools import repeat
 
 
 def get_initial_transit_cols(df: pl.DataFrame) -> pl.DataFrame:
@@ -47,7 +50,7 @@ def get_initial_transit_cols(df: pl.DataFrame) -> pl.DataFrame:
     return parsed_df
 
 
-def parse_stops(df: DataFrame) -> DataFrame:
+def parse_stops(df: pl.DataFrame) -> pl.DataFrame:
     out_df = (
         df.withColumn(
             "transit_lines",
@@ -122,20 +125,20 @@ def parse_stops(df: DataFrame) -> DataFrame:
     return out_df
 
 
-def parse_mode_duration(dur_col: str, mode: str, second_divisor: int) -> Column:
-    duration_array_seconds: Column = F.array_compact(
-        F.transform(
-            F.col("steps"),
-            lambda x: F.when(
-                x["travel_mode"] == mode,
-                x[dur_col]["value"].cast("int"),
-            ).otherwise(F.lit(None)),
-        ),
-    )
-    return (
-        F.aggregate(duration_array_seconds, F.lit(0), lambda acc, x: acc + x)
-        / second_divisor
-    )
+# def parse_mode_duration(dur_col: str, mode: str, second_divisor: int) -> Column:
+#     duration_array_seconds: Column = F.array_compact(
+#         F.transform(
+#             F.col("steps"),
+#             lambda x: F.when(
+#                 x["travel_mode"] == mode,
+#                 x[dur_col]["value"].cast("int"),
+#             ).otherwise(F.lit(None)),
+#         ),
+#     )
+#     return (
+#         F.aggregate(duration_array_seconds, F.lit(0), lambda acc, x: acc + x)
+#         / second_divisor
+#     )
 
 
 def drop_bad_directions(df: pl.DataFrame):
@@ -163,8 +166,8 @@ def parse_transit_result(df: pl.DataFrame) -> pl.DataFrame:
         parsed_stops.distinct()
         .withColumn("distance_mi", F.round(F.col("distance") / 1609.34, 2))
         .withColumn("duration_min", F.ceiling(F.col("duration") / 60))
-        .withColumn("walking_min", parse_mode_duration("duration", "WALKING", 60))
-        .withColumn("transit_min", parse_mode_duration("duration", "TRANSIT", 60))
+        # .withColumn("walking_min", parse_mode_duration("duration", "WALKING", 60))
+        # .withColumn("transit_min", parse_mode_duration("duration", "TRANSIT", 60))
         .withColumn(
             "waiting_min",
             F.col("duration_min") - F.col("walking_min") - F.col("transit_min"),
@@ -192,21 +195,27 @@ def parse_transit_result(df: pl.DataFrame) -> pl.DataFrame:
     return transit_directions_final
 
 
+def json_to_df(fs: gcsfs.GCSFileSystem, path: str) -> pl.DataFrame:
+    with fs.open(path) as f:
+        temp_df = pl.read_json(f.read())
+    return temp_df
+
+
 def parse_distance(run_type: str = "overwrite"):
     if run_type not in ["append", "overwrite"]:
         raise ValueError(f"run_type must be 'append' or 'overwrite', got {run_type}")
 
-    fs = gcsfs.GCSFileSystem(project="homehuntr")
+    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
     transit_directions = []
-    transit_directions_paths = fs.ls("homehuntr/directions")
-    for path in transit_directions_paths:
-        if not path.endswith("_transit.json"):
-            continue
-        with fs.open(path) as f:
-            temp_df = pl.read_json(f.read())
-            transit_directions.append(temp_df)
+    transit_directions_paths = [
+        i for i in fs.ls("homehuntr-storage/directions") if i.endswith(" transit.json")
+    ]
 
-    transit_directions_raw = pl.concat(transit_directions, how="diagonal")
+    with ThreadPoolExecutor(max_workers=64) as executor:
+        transit_directions = list(
+            executor.map(json_to_df, repeat(fs), transit_directions_paths)
+        )
+    transit_directions_raw = pl.concat(transit_directions, how="diagonal_relaxed")
     transit_directions_final = parse_transit_result(transit_directions_raw)
 
     transit_directions_final.head()
