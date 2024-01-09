@@ -3,23 +3,48 @@ import gcsfs
 
 
 def get_initial_transit_cols(df: pl.DataFrame) -> pl.DataFrame:
-    return (
-        df.select(
-            F.col("geocoded_waypoints").getItem(0)["place_id"].alias("origin_id"),
-            F.col("geocoded_waypoints").getItem(1)["place_id"].alias("destination_id"),
-            F.explode("routes.legs").alias("legs"),
+    parsed_df = (
+        df.with_columns(
+            pl.col("geocoded_waypoints")
+            .map_elements(lambda x: x[0]["place_id"])
+            .alias("origin_id")
         )
+        .with_columns(
+            pl.col("geocoded_waypoints")
+            .map_elements(lambda x: x[1]["place_id"])
+            .alias("destination_id")
+        )
+        .with_columns(
+            routes_struct=pl.col("routes").map_elements(
+                lambda x: x[0] if x is not None else None
+            ),
+        )
+        .unnest("routes_struct")
+        .with_columns(
+            legs_struct=pl.col("legs").map_elements(
+                lambda x: x[0] if x is not None else None
+            )
+        )
+        .unnest("legs_struct")
+        .unnest("duration")
+        .with_columns(duration=pl.col("value"))
+        .drop("text")
+        .drop("value")
+        .unnest("distance")
+        .with_columns(distance=pl.col("value"))
+        .with_columns(steps=pl.col("steps").map_elements(lambda x: x[0]))
         .select(
-            F.col("origin_id"),
-            F.col("destination_id"),
-            F.col("legs.start_address").getItem(0).alias("origin_name"),
-            F.col("legs.end_address").getItem(0).alias("destination_name"),
-            F.col("legs.duration.value").getItem(0).alias("duration"),
-            F.col("legs.distance.value").getItem(0).alias("distance"),
-            F.col("legs.steps"),
+            pl.col("origin_id"),
+            pl.col("destination_id"),
+            pl.col("start_address").alias("origin_name"),
+            pl.col("end_address").alias("destination_name"),
+            pl.col("duration"),
+            pl.col("distance"),
+            pl.col("steps"),
         )
-        .withColumn("steps", F.col("steps").getItem(0))
     )
+
+    return parsed_df
 
 
 def parse_stops(df: DataFrame) -> DataFrame:
