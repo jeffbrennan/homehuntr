@@ -3,9 +3,11 @@ import polars as pl
 import gcsfs
 import os
 from itertools import repeat
+from functools import reduce
 
 
 def get_initial_transit_cols(df: pl.DataFrame) -> pl.DataFrame:
+    print("getting initial transit cols...")
     parsed_df = (
         df.with_columns(
             pl.col("geocoded_waypoints")
@@ -18,16 +20,10 @@ def get_initial_transit_cols(df: pl.DataFrame) -> pl.DataFrame:
             .alias("destination_id")
         )
         .with_columns(
-            routes_struct=pl.col("routes").map_elements(
-                lambda x: x[0] if x is not None else None
-            ),
+            routes_struct=pl.col("routes").map_elements(lambda x: x[0]),
         )
         .unnest("routes_struct")
-        .with_columns(
-            legs_struct=pl.col("legs").map_elements(
-                lambda x: x[0] if x is not None else None
-            )
-        )
+        .with_columns(legs_struct=pl.col("legs").map_elements(lambda x: x[0]))
         .unnest("legs_struct")
         .unnest("duration")
         .with_columns(duration=pl.col("value"))
@@ -35,7 +31,6 @@ def get_initial_transit_cols(df: pl.DataFrame) -> pl.DataFrame:
         .drop("value")
         .unnest("distance")
         .with_columns(distance=pl.col("value"))
-        .with_columns(steps=pl.col("steps").map_elements(lambda x: x[0]))
         .select(
             pl.col("origin_id"),
             pl.col("destination_id"),
@@ -103,18 +98,11 @@ def parse_stops(df: pl.DataFrame) -> pl.DataFrame:
         .select(
             "origin_id",
             "destination_id",
-            "origin_name",
-            "destination_name",
             pl.struct(
                 ["vehicle_type", "transit_lines", "departure_stop", "arrival_stop"]
             ).alias("combined_stops"),
         )
-        .group_by(
-            "origin_id",
-            "destination_id",
-            "origin_name",
-            "destination_name",
-        )
+        .group_by("origin_id", "destination_id")
         .agg(pl.col("combined_stops"))
         .with_columns(
             transit_stops=pl.col("combined_stops").map_elements(
@@ -143,65 +131,85 @@ def parse_stops(df: pl.DataFrame) -> pl.DataFrame:
         .with_columns(
             transit_stops=pl.col("transit_stops").str.replace_all("SUBWAY", "🚂")
         )
+        .drop("combined_stops")
     )
 
     return out_df
 
 
-# def parse_mode_duration(dur_col: str, mode: str, second_divisor: int) -> Column:
-#     duration_array_seconds: Column = F.array_compact(
-#         F.transform(
-#             F.col("steps"),
-#             lambda x: F.when(
-#                 x["travel_mode"] == mode,
-#                 x[dur_col]["value"].cast("int"),
-#             ).otherwise(F.lit(None)),
-#         ),
-#     )
-#     return (
-#         F.aggregate(duration_array_seconds, F.lit(0), lambda acc, x: acc + x)
-#         / second_divisor
-#     )
+def parse_mode_duration(
+    col: pl.Series, dur_col: str, mode: str, second_divisor: int
+) -> pl.Series:
+    """
+    Parses all instances of a given mode from a list of structs and returns the sum of the durations
+    Values are provided in seconds, second divisor provides option to convert to minutes, hours
+    """
+    return col.map_elements(
+        lambda x: [
+            i[dur_col]["value"] / second_divisor for i in x if i["travel_mode"] == mode
+        ]
+    ).list.sum()
 
 
-def drop_bad_directions(df: pl.DataFrame):
+def drop_bad_directions(fs: gcsfs.GCSFileSystem, df: pl.DataFrame) -> None:
     paths = (
         df.select("origin_id", "destination_id")
-        .distinct()
-        .withColumn(
-            "path", F.concat_ws("_", F.col("origin_id"), F.col("destination_id"))
-        )
+        .unique()
+        .with_columns(path=pl.col("origin_id") + pl.lit(" ") + pl.col("destination_id"))
         .select("path")
-        .rdd.flatMap(lambda x: x)
-        .collect()
+        .to_dict()["path"]
+        .to_list()
     )
 
-    fs = gcsfs.GCSFileSystem(project="homehuntr")
+    if isinstance(paths, str):
+        paths = [paths]
+
     for path in paths:
-        fs.rm(f"gs://homehuntr-storage/directions/{path}_transit.json")
+        path_to_remove = f"gs://homehuntr-storage/directions/{path} transit.json"
+        print(f"Removing {path_to_remove}")
+        fs.rm(path_to_remove)
 
 
-def parse_transit_result(df: pl.DataFrame) -> pl.DataFrame:
+def parse_transit_result(fs: gcsfs.GCSFileSystem, df: pl.DataFrame) -> pl.DataFrame:
+    max_duration_min = 60 * 2
     transit_initial_selection = get_initial_transit_cols(df)
     parsed_stops = parse_stops(transit_initial_selection)
 
+    transit_stops_combined = transit_initial_selection.join(
+        parsed_stops, on=["origin_id", "destination_id"]
+    )
+
+    print("Parsing transit directions...")
     transit_directions = (
-        parsed_stops.distinct()
-        .withColumn("distance_mi", F.round(F.col("distance") / 1609.34, 2))
-        .withColumn("duration_min", F.ceiling(F.col("duration") / 60))
-        # .withColumn("walking_min", parse_mode_duration("duration", "WALKING", 60))
-        # .withColumn("transit_min", parse_mode_duration("duration", "TRANSIT", 60))
-        .withColumn(
-            "waiting_min",
-            F.col("duration_min") - F.col("walking_min") - F.col("transit_min"),
+        transit_stops_combined.with_columns(distance_mi=pl.col("distance") / 1609.34)
+        .with_columns(distance_mi=pl.col("distance_mi").round(2))
+        .with_columns(duration_min=pl.col("duration") / 60)
+        .with_columns(duration_min=pl.col("duration_min").ceil())
+        .with_columns(
+            walking_min=parse_mode_duration(pl.col("steps"), "duration", "WALKING", 60)
+        )
+        .with_columns(
+            transit_min=parse_mode_duration(pl.col("steps"), "duration", "TRANSIT", 60)
+        )
+        .with_columns(
+            waiting_min=pl.col("duration_min")
+            - pl.col("walking_min")
+            - pl.col("transit_min")
         )
     )
 
-    bad_directions = transit_directions.filter(F.col("duration_min") > 120)
-    if bad_directions.count() > 0:
-        drop_bad_directions(bad_directions)
+    bad_directions = transit_directions.filter(
+        pl.col("duration_min") > max_duration_min
+    )
+    n_bad_directions = bad_directions.select(pl.count()).item()
+    if n_bad_directions > 0:
+        raise ValueError(f"Expecting no bad directions, found {n_bad_directions}")
+        #  TODO: remove error after more testing
+        drop_bad_directions(fs, bad_directions)
 
-    transit_directions_final = transit_directions.select(
+    transit_directions_final = transit_directions.filter(
+        pl.col("duration_min") < max_duration_min
+    ).select(
         "origin_id",
         "origin_name",
         "destination_id",
@@ -234,17 +242,21 @@ def parse_distance(run_type: str = "overwrite"):
         i for i in fs.ls("homehuntr-storage/directions") if i.endswith(" transit.json")
     ]
 
-    with ThreadPoolExecutor(max_workers=64) as executor:
+    with ThreadPoolExecutor(max_workers=128) as executor:
         transit_directions = list(
             executor.map(json_to_df, repeat(fs), transit_directions_paths)
         )
-    transit_directions_raw = pl.concat(transit_directions, how="diagonal_relaxed")
-    transit_directions_final = parse_transit_result(transit_directions_raw)
 
-    transit_directions_final.head()
+    # concatenation is non-deterministic - sometimes throws errors regarding the schema
+    transit_directions_raw = pl.concat(transit_directions, how="vertical_relaxed")
+    transit_directions_final = parse_transit_result(fs, transit_directions_raw)
 
-    # with fs.open("homehuntr/data/delta/transit_directions/", "wb") as f:
-    #     transit_directions_final.write_delta(f, mode="overwrite")  # type: ignore
+    # TODO: run pyspark on same dataset and compare results in separate test script
+    transit_directions_final.write_delta(
+        "gs://homehuntr-storage/delta/transit_directions_polars",
+        mode="overwrite",
+        storage_options={"SERVICE_ACCOUNT": os.getenv("GCP_AUTH_PATH")},
+    )
 
 
 if __name__ == "__main__":
