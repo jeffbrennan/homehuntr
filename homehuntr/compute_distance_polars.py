@@ -50,78 +50,101 @@ def get_initial_transit_cols(df: pl.DataFrame) -> pl.DataFrame:
     return parsed_df
 
 
-def parse_stops(df: pl.DataFrame) -> pl.DataFrame:
-    out_df = (
-        df.withColumn(
-            "transit_lines",
-            F.array_compact(
-                F.transform(
-                    F.col("steps"),
-                    lambda x: x["transit_details"]["line"]["short_name"],
-                )
-            ),
-        )
-        .withColumn(
-            "departure_stop",
-            F.array_compact(
-                F.transform(
-                    F.col("steps"),
-                    lambda x: x["transit_details"]["departure_stop"]["name"],
-                )
-            ),
-        )
-        .withColumn(
-            "arrival_stop",
-            F.array_compact(
-                F.transform(
-                    F.col("steps"),
-                    lambda x: x["transit_details"]["arrival_stop"]["name"],
-                )
-            ),
-        )
-        .withColumn(
-            "vehicle_type",
-            F.array_compact(
-                F.transform(
-                    F.col("steps"),
-                    lambda x: x["transit_details"]["line"]["vehicle"]["type"],
-                )
-            ),
-        )
-        .withColumn(
-            "transit_stops",
-            F.transform(
-                F.arrays_zip(
-                    "vehicle_type",
-                    "transit_lines",
-                    "departure_stop",
-                    "arrival_stop",
-                ),
-                lambda x: F.concat(
-                    F.lit("["),
-                    x["vehicle_type"],
-                    x["transit_lines"],
-                    F.lit("]"),
-                    F.lit(" "),
-                    x["departure_stop"],
-                    F.lit("->"),
-                    x["arrival_stop"],
-                ),
-            ),
-        )
-        .withColumn(
-            "num_transfers",
-            F.size(F.col("transit_stops")) - 1,
-        )
-        .withColumn(
-            "num_transfers",
-            F.when(F.col("num_transfers") < 0, 0).otherwise(F.col("num_transfers")),
-        )
-        .withColumn("transit_stops", F.concat_ws("; ", F.col("transit_stops")))
-        .withColumn("transit_stops", F.regexp_replace("transit_stops", "BUS", "🚌"))
-        .withColumn("transit_stops", F.regexp_replace("transit_stops", "SUBWAY", "🚂")),
+def parse_list_of_structs(
+    col: pl.Series, keys: tuple[str], keep_nulls: bool = True
+) -> pl.Series:
+    """
+    Takes in a column which is a list[struct[n]] and returns values from the struct based on a tuple of provided keys
+    """
+    if keep_nulls:
+        return col.map_elements(lambda x: [reduce(dict.get, keys, i) for i in x])
+
+    return col.map_elements(
+        lambda x: [
+            reduce(dict.get, keys, i)
+            for i in x
+            if reduce(dict.get, keys, i) is not None
+        ]
     )
-    out_df = out_df[0]
+
+
+def parse_stops(df: pl.DataFrame) -> pl.DataFrame:
+    print("Parsing stops...")
+    out_df = (
+        df.with_columns(
+            transit_lines=parse_list_of_structs(
+                col=pl.col("steps"),
+                keys=("transit_details", "line", "short_name"),
+                keep_nulls=False,
+            )
+        )
+        .with_columns(
+            departure_stop=parse_list_of_structs(
+                col=pl.col("steps"),
+                keys=("transit_details", "departure_stop", "name"),
+                keep_nulls=False,
+            )
+        )
+        .with_columns(
+            arrival_stop=parse_list_of_structs(
+                col=pl.col("steps"),
+                keys=("transit_details", "arrival_stop", "name"),
+                keep_nulls=False,
+            )
+        )
+        .with_columns(
+            vehicle_type=parse_list_of_structs(
+                col=pl.col("steps"),
+                keys=("transit_details", "line", "vehicle", "type"),
+                keep_nulls=False,
+            )
+        )
+        .explode(["vehicle_type", "transit_lines", "departure_stop", "arrival_stop"])
+        .select(
+            "origin_id",
+            "destination_id",
+            "origin_name",
+            "destination_name",
+            pl.struct(
+                ["vehicle_type", "transit_lines", "departure_stop", "arrival_stop"]
+            ).alias("combined_stops"),
+        )
+        .group_by(
+            "origin_id",
+            "destination_id",
+            "origin_name",
+            "destination_name",
+        )
+        .agg(pl.col("combined_stops"))
+        .with_columns(
+            transit_stops=pl.col("combined_stops").map_elements(
+                lambda x: [
+                    "["
+                    + i["vehicle_type"]
+                    + i["transit_lines"]
+                    + "] "
+                    + i["departure_stop"]
+                    + "->"
+                    + i["arrival_stop"]
+                    for i in x
+                ]
+            )
+        )
+        .with_columns(num_transfers=pl.col("combined_stops").list.len() - 1)
+        .with_columns(
+            num_transfers=pl.when(pl.col("num_transfers") < 0)
+            .then(0)
+            .otherwise(pl.col("num_transfers"))
+        )
+        .with_columns(
+            transit_stops=pl.col("transit_stops").map_elements(lambda x: "; ".join(x))
+        )
+        .with_columns(transit_stops=pl.col("transit_stops").str.replace_all("BUS", "🚌"))
+        .with_columns(
+            transit_stops=pl.col("transit_stops").str.replace_all("SUBWAY", "🚂")
+        )
+    )
+
     return out_df
 
 
