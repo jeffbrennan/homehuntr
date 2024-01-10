@@ -226,10 +226,10 @@ def parse_transit_result(fs: gcsfs.GCSFileSystem, df: pl.DataFrame) -> pl.DataFr
     return transit_directions_final
 
 
-def json_to_df(fs: gcsfs.GCSFileSystem, path: str) -> pl.DataFrame:
+def json_to_dict(fs: gcsfs.GCSFileSystem, path: str) -> pl.DataFrame:
     with fs.open(path) as f:
-        temp_df = pl.read_json(f.read())
-    return temp_df
+        d = json.loads(f.read())
+    return d
 
 
 def parse_distance(run_type: str = "overwrite"):
@@ -244,11 +244,10 @@ def parse_distance(run_type: str = "overwrite"):
 
     with ThreadPoolExecutor(max_workers=128) as executor:
         transit_directions = list(
-            executor.map(json_to_df, repeat(fs), transit_directions_paths)
+            executor.map(json_to_dict, repeat(fs), transit_directions_paths)
         )
 
-    # concatenation is non-deterministic - sometimes throws errors regarding the schema
-    transit_directions_raw = pl.concat(transit_directions, how="vertical_relaxed")
+    transit_directions_raw = pl.DataFrame(transit_directions)
     transit_directions_final = parse_transit_result(fs, transit_directions_raw)
 
     # TODO: run pyspark on same dataset and compare results in separate test script
