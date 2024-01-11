@@ -6,7 +6,7 @@ import gcsfs
 import os
 from itertools import repeat
 from functools import reduce
-
+from utils.directions_schema import get_direction_schema
 
 VALID_STRUCT_KEYS = (
     tuple[
@@ -114,6 +114,26 @@ def parse_stops(df: pl.DataFrame) -> pl.DataFrame:
             )
         )
         .explode(["vehicle_type", "transit_lines", "departure_stop", "arrival_stop"])
+        .with_columns(
+            vehicle_type=pl.when(pl.col("vehicle_type").is_null())
+            .then(pl.lit(""))
+            .otherwise(pl.col("vehicle_type"))
+        )
+        .with_columns(
+            transit_lines=pl.when(pl.col("transit_lines").is_null())
+            .then(pl.lit(""))
+            .otherwise(pl.col("transit_lines"))
+        )
+        .with_columns(
+            departure_stop=pl.when(pl.col("departure_stop").is_null())
+            .then(pl.lit(""))
+            .otherwise(pl.col("departure_stop"))
+        )
+        .with_columns(
+            arrival_stop=pl.when(pl.col("arrival_stop").is_null())
+            .then(pl.lit(""))
+            .otherwise(pl.col("arrival_stop"))
+        )
         .select(
             "origin_id",
             "destination_id",
@@ -121,6 +141,7 @@ def parse_stops(df: pl.DataFrame) -> pl.DataFrame:
                 ["vehicle_type", "transit_lines", "departure_stop", "arrival_stop"]
             ).alias("combined_stops"),
         )
+        # )
         .group_by("origin_id", "destination_id")
         .agg(pl.col("combined_stops"))
         .with_columns(
@@ -270,7 +291,9 @@ def parse_distance(run_type: str = "overwrite"):
             executor.map(json_to_dict, repeat(fs), transit_directions_paths)
         )
 
-    transit_directions_raw = pl.DataFrame(transit_directions)
+    direction_schema = get_direction_schema()
+    transit_directions_raw = pl.DataFrame(transit_directions, schema=direction_schema)
+
     transit_directions_final = parse_transit_result(fs, transit_directions_raw)
 
     # TODO: run pyspark on same dataset and compare results in separate test script
