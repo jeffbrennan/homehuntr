@@ -1,9 +1,26 @@
 from concurrent.futures import ThreadPoolExecutor
+import json
+from typing import Literal
 import polars as pl
 import gcsfs
 import os
 from itertools import repeat
 from functools import reduce
+
+
+VALID_STRUCT_KEYS = (
+    tuple[
+        Literal["transit_details"],
+        Literal["line"] | Literal["departure_stop"] | Literal["arrival_stop"],
+        Literal["short_name"] | Literal["name"],
+    ]
+    | tuple[
+        Literal["transit_details"],
+        Literal["line"],
+        Literal["vehicle"],
+        Literal["type"],
+    ]
+)
 
 
 def get_initial_transit_cols(df: pl.DataFrame) -> pl.DataFrame:
@@ -46,8 +63,10 @@ def get_initial_transit_cols(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def parse_list_of_structs(
-    col: pl.Series, keys: tuple[str], keep_nulls: bool = True
-) -> pl.Series:
+    col: pl.Expr,
+    keys: VALID_STRUCT_KEYS,
+    keep_nulls: bool = True,
+) -> pl.Expr:
     """
     Takes in a column which is a list[struct[n]] and returns values from the struct based on a tuple of provided keys
     """
@@ -138,8 +157,8 @@ def parse_stops(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def parse_mode_duration(
-    col: pl.Series, dur_col: str, mode: str, second_divisor: int
-) -> pl.Series:
+    col: pl.Expr, dur_col: str, mode: str, second_divisor: int
+) -> pl.Expr:
     """
     Parses all instances of a given mode from a list of structs and returns the sum of the durations
     Values are provided in seconds, second divisor provides option to convert to minutes, hours
@@ -236,7 +255,11 @@ def parse_distance(run_type: str = "overwrite"):
     if run_type not in ["append", "overwrite"]:
         raise ValueError(f"run_type must be 'append' or 'overwrite', got {run_type}")
 
-    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
+    token = os.getenv("GCP_AUTH_PATH")
+    if token is None:
+        raise ValueError("GCP_AUTH_PATH environment variable must be set")
+
+    fs = gcsfs.GCSFileSystem(project="homehuntr", token=token)
     transit_directions = []
     transit_directions_paths = [
         i for i in fs.ls("homehuntr-storage/directions") if i.endswith(" transit.json")
@@ -254,7 +277,7 @@ def parse_distance(run_type: str = "overwrite"):
     transit_directions_final.write_delta(
         "gs://homehuntr-storage/delta/transit_directions_polars",
         mode="overwrite",
-        storage_options={"SERVICE_ACCOUNT": os.getenv("GCP_AUTH_PATH")},
+        storage_options={"SERVICE_ACCOUNT": token},
     )
 
 
