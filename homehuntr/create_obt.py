@@ -4,6 +4,8 @@ import os
 from dotenv import load_dotenv
 import gcsfs
 
+from homehuntr import common
+
 
 def normalize_data(col: pl.Expr) -> pl.Expr:
     col_max = col.max()
@@ -101,11 +103,8 @@ def get_clean_address(fs: gcsfs.GCSFileSystem):
     return address_cleaned
 
 
-def get_direction_df():
+def get_direction_df(token: str):
     direction_path = "gs://homehuntr-storage/delta/transit_directions"
-    token = os.getenv("GCP_AUTH_PATH")
-    if token is None:
-        raise ValueError("GCP_AUTH_PATH environment variable must be set")
 
     direction_info = pl.read_delta(
         direction_path, storage_options={"SERVICE_ACCOUNT": token}
@@ -331,13 +330,7 @@ def summarize_scores(df: pl.DataFrame) -> pl.DataFrame:
 
 def main() -> None:
     out_base_path = "gs://homehuntr-storage/delta/gold"
-    load_dotenv()
-
-    token = os.getenv("GCP_AUTH_PATH")
-    if token is None:
-        raise ValueError("GCP_AUTH_PATH environment variable must be set")
-
-    fs = gcsfs.GCSFileSystem(project="homehuntr", token=token)
+    fs, token = common.get_gcp_fs()
 
     address_cleaned = get_clean_address(fs)
     direction_df = get_direction_df()

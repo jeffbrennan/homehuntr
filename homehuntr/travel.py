@@ -6,6 +6,8 @@ import argparse
 from typing import Optional, TypedDict
 import gcsfs
 
+from homehuntr import common
+
 
 class Place(TypedDict):
     place_id: str
@@ -162,8 +164,7 @@ def get_directions(
     """
     modes = ["transit", "bicycling"]
 
-    load_dotenv()
-    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
+    fs, _ = common.get_gcp_fs()
     origin = get_origin(fs, address, uid)
     if not refresh_directions:
         return

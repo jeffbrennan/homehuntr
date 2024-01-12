@@ -2,9 +2,10 @@ import gcsfs
 import os
 from dotenv import load_dotenv
 import json
+from homehuntr import common
 
-load_dotenv()
-fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
+fs, _ = common.configure_spark_with_delta_pipget_gcp_fs()
+
 
 directory_path = "homehuntr-storage/directions"
 

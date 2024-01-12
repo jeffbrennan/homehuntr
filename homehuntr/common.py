@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+import gcsfs
 from pyspark.sql import SparkSession
 from delta import configure_spark_with_delta_pip
 import os
@@ -30,3 +31,14 @@ def get_spark() -> SparkSession:
     )
 
     return spark
+
+
+def get_gcp_fs() -> tuple[gcsfs.GCSFileSystem, str]:
+    load_dotenv()
+
+    token = os.getenv("GCP_AUTH_PATH")
+    if token is None:
+        raise ValueError("GCP_AUTH_PATH environment variable must be set")
+
+    fs = gcsfs.GCSFileSystem(project="homehuntr", token=token)
+    return fs, token

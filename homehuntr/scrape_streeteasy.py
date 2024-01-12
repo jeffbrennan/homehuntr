@@ -12,6 +12,8 @@ from pathlib import Path
 import re
 import gcsfs
 
+from homehuntr import common
+
 
 class PriceElement(TypedDict):
     price_change: str
@@ -252,8 +254,8 @@ def scrape_apartment_url(url) -> ScrapeResult:
     }
 
     address_path = f"gs://homehuntr-storage/address/{address_uid}.json"
-    load_dotenv()
-    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
+    fs, _ = common.get_gcp_fs()
+
     with fs.open(address_path, "w") as f:
         json.dump(address_parsed, f, indent=4, ensure_ascii=False)
 

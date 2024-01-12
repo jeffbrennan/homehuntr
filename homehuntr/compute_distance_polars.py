@@ -6,6 +6,7 @@ import gcsfs
 import os
 from itertools import repeat
 from functools import reduce
+from homehuntr import common
 from utils.directions_schema import get_direction_schema
 
 VALID_STRUCT_KEYS = (
@@ -276,11 +277,7 @@ def parse_distance(run_type: str = "overwrite"):
     if run_type not in ["append", "overwrite"]:
         raise ValueError(f"run_type must be 'append' or 'overwrite', got {run_type}")
 
-    token = os.getenv("GCP_AUTH_PATH")
-    if token is None:
-        raise ValueError("GCP_AUTH_PATH environment variable must be set")
-
-    fs = gcsfs.GCSFileSystem(project="homehuntr", token=token)
+    fs, token = common.get_gcp_fs()
     transit_directions = []
     transit_directions_paths = [
         i for i in fs.ls("homehuntr-storage/directions") if i.endswith(" transit.json")

@@ -1,4 +1,5 @@
 import argparse
+from homehuntr import common
 from scrape_streeteasy import scrape_apartment_url
 from travel import get_directions, request_directions, Place
 from compute_distance import parse_distance
@@ -131,9 +132,9 @@ def main():
     else:
         new_url_df = pl.DataFrame([])
 
-    load_dotenv()
-    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
     link_path = "gs://homehuntr-storage/links/links.csv"
+    fs, _ = common.get_gcp_fs()
+
     with fs.open(link_path, "rb") as f:
         current_df = pl.read_csv(f)
 

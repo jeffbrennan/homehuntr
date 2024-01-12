@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import argparse
 from typing import TypedDict
+from homehuntr import common
 from travel import get_address_details
 import gcsfs
 
@@ -71,7 +72,7 @@ def main() -> None:
     }
 
     destination_path = "gs://homehuntr-storage/destinations/destinations.json"
-    fs = gcsfs.GCSFileSystem(project="homehuntr")
+    fs, _ = common.get_gcp_fs()
     with fs.open(destination_path, "rb") as f:
         destination_data = json.load(f)
 

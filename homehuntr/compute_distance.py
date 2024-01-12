@@ -6,6 +6,8 @@ from common import get_spark
 import gcsfs
 import os
 
+from homehuntr import common
+
 
 def get_initial_transit_cols(df: DataFrame) -> DataFrame:
     return (
@@ -130,8 +132,8 @@ def drop_bad_directions(df: DataFrame):
         .collect()
     )
 
-    load_dotenv()
-    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
+    fs, _ = common.get_gcp_fs()
+
     for path in paths:
         fs.rm(f"gs://homehuntr-storage/directions/{path}_transit.json")
 
