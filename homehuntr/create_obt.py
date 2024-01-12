@@ -328,7 +328,7 @@ def summarize_scores(df: pl.DataFrame) -> pl.DataFrame:
     return summary_df
 
 
-def main() -> None:
+def summarize_data() -> None:
     out_base_path = "gs://homehuntr-storage/delta/gold"
     fs, token = common.get_gcp_fs()
 
@@ -372,6 +372,10 @@ def main() -> None:
         overwrite_schema=True,
         storage_options={"SERVICE_ACCOUNT": token},
     )
+
+
+def main() -> None:
+    summarize_data()
 
 
 if __name__ == "__main__":
