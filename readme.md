@@ -39,7 +39,3 @@ Price and amenities
       dedupe_directions-->delta/transit_directions;
       end;
 ```
-
-# TODOS
-
-- [ ] transition all writes to gcp
