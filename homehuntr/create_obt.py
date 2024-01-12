@@ -1,3 +1,4 @@
+import json
 import polars as pl
 import os
 from dotenv import load_dotenv
@@ -90,23 +91,25 @@ def clean_address(df: pl.DataFrame) -> pl.DataFrame:
 def get_clean_address(fs: gcsfs.GCSFileSystem):
     address_base_path = "gs://homehuntr-storage/address"
     all_addresses = fs.ls(address_base_path)
-    address_info_dfs = []
+    address_data = []
     for i in all_addresses:
-        with fs.open(f"{address_base_path}/{i}", "rb") as f:
-            address_info_dfs.append(pl.read_json(f))
-    address_info = pl.concat(address_info_dfs, how="diagonal")
+        with fs.open(f"gs://{i}", "r") as f:
+            address_data.append(json.loads(f.read()))
+
+    address_info = pl.DataFrame(address_data)
     address_cleaned = clean_address(address_info)
     return address_cleaned
 
 
-def get_direction_df(fs: gcsfs.GCSFileSystem):
+def get_direction_df():
     direction_path = "gs://homehuntr-storage/delta/transit_directions"
-    with fs.open(direction_path, "rb") as f:
-        direction_info = (
-            pl.read_delta(f)  # type: ignore
-            .sort("origin_id")
-            .filter(~pl.col("origin_name").str.contains("591"))
-        )
+    token = os.getenv("GCP_AUTH_PATH")
+    if token is None:
+        raise ValueError("GCP_AUTH_PATH environment variable must be set")
+
+    direction_info = pl.read_delta(
+        direction_path, storage_options={"SERVICE_ACCOUNT": token}
+    ).sort("origin_id")
 
     return direction_info
 
@@ -114,8 +117,9 @@ def get_direction_df(fs: gcsfs.GCSFileSystem):
 def get_destination_df(fs: gcsfs.GCSFileSystem):
     destination_path = "gs://homehuntr-storage/destinations"
     destination_files = fs.ls(destination_path)
-    with fs.open(f"{destination_path}/{destination_files[0]}", "rb") as f:
-        destination_info_raw = pl.read_json(f)  # type: ignore
+    with fs.open(destination_files[0], "r") as f:
+        destination_data = json.loads(f.read())
+    destination_info_raw = pl.DataFrame(destination_data)
 
     destination_info = (
         destination_info_raw.drop("address")
@@ -240,9 +244,6 @@ def get_transit_score(direction_info, destination_info):
             .then(1)
             .otherwise(pl.col("transit_score"))
         )
-        .select(["person", "origin_id", "transit_score"])
-        .group_by(["person", "origin_id"])
-        .agg(pl.col("transit_score").mean().alias("transit_score"))
     )
 
     return scaled_df
@@ -331,10 +332,15 @@ def summarize_scores(df: pl.DataFrame) -> pl.DataFrame:
 def main() -> None:
     out_base_path = "gs://homehuntr-storage/delta/gold"
     load_dotenv()
-    fs = gcsfs.GCSFileSystem(project="homehuntr", token=os.getenv("GCP_AUTH_PATH"))
+
+    token = os.getenv("GCP_AUTH_PATH")
+    if token is None:
+        raise ValueError("GCP_AUTH_PATH environment variable must be set")
+
+    fs = gcsfs.GCSFileSystem(project="homehuntr", token=token)
 
     address_cleaned = get_clean_address(fs)
-    direction_df = get_direction_df(fs)
+    direction_df = get_direction_df()
     destination_df = get_destination_df(fs)
     transit_score_df = get_transit_score(
         direction_info=direction_df, destination_info=destination_df
@@ -347,17 +353,32 @@ def main() -> None:
     )
     summary_df = summarize_scores(obt)
 
-    with fs.open(f"{out_base_path}/apartment_details", "wb") as f:
-        address_cleaned.write_delta(f)  # type: ignore
+    address_cleaned.write_delta(
+        f"{out_base_path}/apartment_details",
+        mode="overwrite",
+        overwrite_schema=True,
+        storage_options={"SERVICE_ACCOUNT": token},
+    )
 
-    with fs.open(f"{out_base_path}/transit_score", "wb") as f:
-        transit_score_df.write_delta(f)  # type: ignore
+    transit_score_df.write_delta(
+        f"{out_base_path}/transit_score",
+        mode="overwrite",
+        overwrite_schema=True,
+        storage_options={"SERVICE_ACCOUNT": token},
+    )
 
-    with fs.open(f"{out_base_path}/summary", "wb") as f:
-        summary_df.write_delta(f)  # type: ignore
+    summary_df.write_delta(
+        f"{out_base_path}/summary",
+        mode="overwrite",
+        storage_options={"SERVICE_ACCOUNT": token},
+    )
 
-    with fs.open(f"{out_base_path}/obt", "wb") as f:
-        obt.write_delta(f)  # type: ignore
+    obt.write_delta(
+        f"{out_base_path}/obt",
+        mode="overwrite",
+        overwrite_schema=True,
+        storage_options={"SERVICE_ACCOUNT": token},
+    )
 
 
 if __name__ == "__main__":
