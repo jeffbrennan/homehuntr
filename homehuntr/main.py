@@ -2,18 +2,13 @@ import argparse
 from homehuntr import common
 from scrape_streeteasy import scrape_apartment_url
 from travel import get_directions, request_directions, Place
-from compute_distance import parse_distance
 from clean_delta import dedupe_directions
 from datetime import datetime as dt
 import polars as pl
-import os
-from dotenv import load_dotenv
-
-import gcsfs
 from gcsfs.core import GCSFileSystem
 
-# from clean_address import clean_address
-# from create_obt import build_obt
+from compute_distance_polars import parse_distance
+from create_obt import summarize_data
 
 
 def handle_missing_directions(fs: GCSFileSystem) -> None:
@@ -191,6 +186,7 @@ def main():
 
     parse_distance(run_type="overwrite")
     dedupe_directions()
+    summarize_data()
 
 
 if __name__ == "__main__":
