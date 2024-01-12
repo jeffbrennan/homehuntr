@@ -58,14 +58,15 @@ class ScrapeResult(TypedDict):
 
 def get_page_tree(url: str) -> HtmlElement:
     header = {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36",
+        "user-agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/"
+            " 537.36 (KHTML, like Gecko)"
+            " Chrome/74.0.3729.169 Safari/537.36"
+        ),
         "referer": "https://www.google.com/",
     }
     parsed_url = url.split("?")[0]
     page = requests.get(parsed_url, headers=header)
-    tree = html.fromstring(page.content)
-
-    page = requests.get(url, headers=header)
     tree = html.fromstring(page.content)
     return tree
 
