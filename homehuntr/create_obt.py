@@ -333,7 +333,7 @@ def summarize_data() -> None:
     fs, token = common.get_gcp_fs()
 
     address_cleaned = get_clean_address(fs)
-    direction_df = get_direction_df()
+    direction_df = get_direction_df(token)
     destination_df = get_destination_df(fs)
     transit_score_df = get_transit_score(
         direction_info=direction_df, destination_info=destination_df
