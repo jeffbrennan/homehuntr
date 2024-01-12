@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 import re
 import gcsfs
+import polars as pl
 
 from homehuntr import common
 
@@ -265,22 +266,26 @@ def scrape_apartment_url(url) -> ScrapeResult:
 
 
 def check_if_url_exists(url: str) -> CheckResult:
-    def load_json(path):
-        with open(path) as f:
-            return json.load(f)
+    _, token = common.get_gcp_fs()
+    uid_df = (
+        pl.read_delta(
+            "gs://homehuntr-storage/delta/gold/obt",
+            storage_options={"SERVICE_ACCOUNT": token},
+        )
+        .select("url", "uid")
+        .unique()
+        .filter(pl.col("url") == url)
+    )
 
-    # TODO: replace this with lookup against final parquet
-    base_path = Path(__file__).parent / "data" / "address"
-    all_addresses = [load_json(i) for i in base_path.glob("*.json")]
+    n_results = uid_df.select(pl.count()).item()
 
-    url_exists = any([i["url"] == url for i in all_addresses])
-    if url_exists:
-        uid = [i["uid"] for i in all_addresses if i["url"] == url][0]
+    if n_results == 0:
+        return {"url_exists": False, "uid": str(uuid.uuid4())}
+    elif n_results == 1:
+        uid = uid_df.select("uid").first().get("uid")
+        return {"url_exists": True, "uid": uid}
     else:
-        uid = str(uuid.uuid4())
-
-    output: CheckResult = {"url_exists": url_exists, "uid": uid}
-    return output
+        raise ValueError(f"Expecting 0 or 1 results, got {n_results}")
 
 
 if __name__ == "__main__":
