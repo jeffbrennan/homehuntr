@@ -5,31 +5,27 @@ from homehuntr import common
 
 fs, token = common.get_gcp_fs()
 
-obt = pl.read_delta(
-    "gs://homehuntr-storage/delta/gold/obt", storage_options={"SERVICE_ACCOUNT": token}
+summary_df = pl.read_delta(
+    "gs://homehuntr-storage/delta/gold/summary",
+    storage_options={"SERVICE_ACCOUNT": token},
 )
+
+
 # TODO: precompute this table
 summary_table_df = (
-    obt.select(
-        "origin_name",
-        "price",
-        "url",
-        "apartment_score",
-        "transit_score",
+    summary_df.select(
+        "building_address", "price", "url", "apartment_score", "transit_score"
     )
     .unique()
-    .group_by(
-        "origin_name",
-        "price",
-        "url",
-        "apartment_score",
-    )
+    .group_by("building_address", "price", "url", "apartment_score")
     .agg(pl.mean("transit_score").alias("transit_score"))
-    .with_columns(pl.col("origin_name").str.split(by=",").alias("address_split"))
+    .with_columns(pl.col("building_address").str.split(by=",").alias("address_split"))
     .with_columns(
         address=pl.col("address_split").map_elements(lambda x: x[0]).str.to_uppercase()
     )
     .filter(pl.col("address").is_not_null())
+    .filter(pl.col("transit_score").is_not_null())
+    .filter(pl.col("apartment_score").is_not_null())
     .with_columns(
         address=pl.concat_str(
             pl.lit('<p><a style="text-decoration: none;" href="'),
@@ -44,33 +40,21 @@ summary_table_df = (
     .with_columns(transit_score=pl.col("transit_score") * 100)
     .with_columns(transit_score=pl.col("transit_score").floor())
     .with_columns(price=pl.col("price").map_elements(lambda x: "${:,}".format(x)))
-    .select("address", "price", "apartment_score", "transit_score")
+    .with_columns(
+        score_combined=pl.col("apartment_score") * 0.6 + pl.col("transit_score") * 0.4
+    )
+    .with_columns(rank=pl.col("score_combined").rank(method="ordinal", descending=True))
+    .select("rank", "address", "price", "apartment_score", "transit_score")
     .sort(pl.col("apartment_score"), descending=True)
     .rename(
         {
+            "rank": "🏆",
             "address": "📍",
             "price": "💰",
             "apartment_score": "🏠",
             "transit_score": "🚂",
         }
     )
-    .to_pandas()
-)
-
-directions_df = (
-    obt.select(
-        "origin_name",
-        "url",
-        "destination_name",
-        "transit_stops",
-        "duration_min",
-        "num_transfers",
-        "walking_min",
-        "transit_min",
-        "waiting_min",
-    )
-    .unique()
-    .sort("destination_name")
     .to_pandas()
 )
 
