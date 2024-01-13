@@ -29,9 +29,14 @@ summary_table_df = (
     .with_columns(
         address=pl.col("address_split").map_elements(lambda x: x[0]).str.to_uppercase()
     )
+    .filter(pl.col("address").is_not_null())
     .with_columns(
         address=pl.concat_str(
-            pl.lit("["), pl.col("address"), pl.lit("]("), pl.col("url"), pl.lit(")")
+            pl.lit('<p><a style="text-decoration: none;" href="'),
+            pl.col("url"),
+            pl.lit('">'),
+            pl.col("address"),
+            pl.lit("</a></p>"),
         )
     )
     .with_columns(apartment_score=pl.col("apartment_score") * 100)
@@ -40,8 +45,7 @@ summary_table_df = (
     .with_columns(transit_score=pl.col("transit_score").floor())
     .with_columns(price=pl.col("price").map_elements(lambda x: "${:,}".format(x)))
     .select("address", "price", "apartment_score", "transit_score")
-    .filter(pl.col("address").is_not_null())
-    .sort(pl.col("apartment_score"))
+    .sort(pl.col("apartment_score"), descending=True)
     .rename(
         {
             "address": "📍",
@@ -108,6 +112,7 @@ app.layout = html.Div(
             fixed_rows={"headers": True},
             style_header={"backgroundColor": "white", "fontWeight": "bold"},
             style_table={"height": "300px", "overflowY": "auto"},
+            markdown_options={"html": True},
         ),
         html.Div(id="datatable-interactivity-container"),
     ]
