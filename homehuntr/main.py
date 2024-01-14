@@ -158,7 +158,11 @@ def main():
             )
         )
         .with_columns(today=pl.lit(dt.now()))
-        .with_columns(days_since_modified=pl.col("date_modified") - pl.lit(dt.now()))
+        .with_columns(
+            days_since_modified=(
+                pl.lit(dt.now()) - pl.col("date_modified")
+            ).dt.total_days()
+        )
     )
 
     handle_missing_directions(fs)
