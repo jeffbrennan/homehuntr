@@ -39,7 +39,7 @@ def get_address_details(address: str) -> AddressDetails:
         "fields": "place_id,geometry",
         "key": MAPS_API_KEY,
     }
-    print(f"Requesting place id for {address}")
+    print("requesting place id...")
     response = requests.get(request_url, params=params)
     validate_response(response)
 
@@ -116,7 +116,7 @@ def get_origin(
         if address is None:
             raise ValueError("Could not resolve address")
 
-        data_elements = ["place_id", "address", "place_lat", "place_lng"]
+        data_elements = ["place_id", "building_address", "place_lat", "place_lng"]
         data_complete = all([x in address_data for x in data_elements])
         if data_complete and address_data["place_id"] is not None:
             return {
