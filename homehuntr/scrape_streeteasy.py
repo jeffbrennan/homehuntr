@@ -60,14 +60,16 @@ class ScrapeResult(TypedDict):
 def get_page_tree(url: str) -> HtmlElement:
     header = {
         "user-agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/"
-            " 537.36 (KHTML, like Gecko)"
-            " Chrome/74.0.3729.169 Safari/537.36"
+            "Mozilla/5.0 (Linux; Android 11; SAMSUNG SM-G973U) AppleWebKit/"
+            "537.36 (KHTML, like Gecko) SamsungBrowser/14.2 Chrome/"
+            "87.0.4280.141 Mobile Safari/537.36"
         ),
         "referer": "https://www.google.com/",
     }
     parsed_url = url.split("?")[0]
     page = requests.get(parsed_url, headers=header)
+    if page.status_code != 200:
+        raise ValueError(f"Status code: {page.status_code}")
     tree = html.fromstring(page.content)
     return tree
 
