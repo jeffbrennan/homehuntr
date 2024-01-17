@@ -125,11 +125,17 @@ def get_price_elements(tree: HtmlElement) -> PriceElement:
         availability = price_clean[1]
         fee_str = "FEE"
         price_change = "unknown"
+    elif "NO FEE" and "DELISTED" in price_clean and len(price_clean) == 5:
+        price, availability, rented_str, rented_days_ago, fee_str = price_clean
+        price_change = "unknown"
     elif len(price_clean) == 5:
         fee_str = "FEE"
         price_change, price, availability, rented_str, rented_days_ago = price_clean
         rented = rented_str == "RENTED"
-
+    elif "RENTED" in price_clean and len(price_clean) == 4:
+        price, availability, rented_str, rented_days_ago = price_clean
+        price_change = "unknown"
+        fee_str = "FEE"
     else:
         price_change, price, availability, fee_str = price_clean
 
