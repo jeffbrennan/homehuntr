@@ -153,8 +153,9 @@ def get_price_elements(tree: HtmlElement) -> PriceElement:
 
 def get_building_address(tree: HtmlElement) -> str:
     building_address_raw = tree.xpath("//div[@class='backend_data BuildingInfo-item']")
-    if len(building_address_raw) != 1:
-        raise ValueError("Expecting exactly one building address")
+    n_results = len(building_address_raw)
+    if n_results != 1:
+        raise ValueError(f"Expecting exactly one building address. Got: {n_results}")
 
     building_address_text = building_address_raw[0].text_content()
     building_address = re.sub(r"\s+", " ", building_address_text).strip()
