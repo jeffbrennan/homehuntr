@@ -97,16 +97,18 @@ def update_last_modified(url: str, destination: str, fs: GCSFileSystem) -> None:
 
 
 def main():
-    recheck_interval_days = 5
+    DT_FORMAT = "%Y-%m-%dT%H:%M:%S%.f"
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", help="url to scrape", nargs="*", required=False)
+    parser.add_argument("--refresh-days", help="refresh days", type=int, required=True)
+
     parser.add_argument(
         "--refresh-directions",
         help="refresh directions",
         action="store_true",
         required=False,
     )
-    DT_FORMAT = "%Y-%m-%dT%H:%M:%S%.f"
 
     args = parser.parse_args()
 
@@ -128,10 +130,10 @@ def main():
         new_url_df = pl.DataFrame([])
 
     link_path = "gs://homehuntr-storage/links/links.csv"
-    fs, _ = common.get_gcp_fs()
+    fs, token = common.get_gcp_fs()
 
     with fs.open(link_path, "rb") as f:
-        current_df = pl.read_csv(f)
+        current_df = pl.read_csv(f.read())
 
     combined_df = (
         pl.concat([current_df, new_url_df], how="diagonal")
@@ -167,7 +169,7 @@ def main():
 
     handle_missing_directions(fs)
     new_urls = url_df.filter(pl.col("date_modified").is_null())["link"].to_list()
-    stale_urls = url_df.filter(pl.col("days_since_modified") > recheck_interval_days)[
+    stale_urls = url_df.filter(pl.col("days_since_modified") >= args.refresh_days)[
         "link"
     ].to_list()
     url_df = url_df.drop("today", "days_since_modified")
@@ -175,6 +177,7 @@ def main():
     # new urls need to be scraped and have directions requested
     if len(new_urls) > 0:
         for url in new_urls:
+            print(f"===[{url}]===")
             scraping_result = scrape_apartment_url(url)
             if scraping_result is None:
                 continue
@@ -185,6 +188,7 @@ def main():
     # stale urls need to have directions requested only if refresh_directions is True
     if len(stale_urls) > 0:
         for url in stale_urls:
+            print(f"===[{url}]===")
             scraping_result = scrape_apartment_url(url)
             if scraping_result is None:
                 continue
