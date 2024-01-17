@@ -258,9 +258,19 @@ def scrape_apartment_url(url: str) -> Optional[ScrapeResult]:
         "amenities": get_amenities(tree),
         "times_saved": get_num_times_saved(tree),
     }
-
     address_path = f"gs://homehuntr-storage/address/{address_uid}.json"
-    fs, _ = common.get_gcp_fs()
+
+    if fs.exists(address_path):
+        with fs.open(address_path) as f:
+            existing_address = json.loads(f.read())
+        if "place_id" in existing_address:
+            address_parsed["place_id"] = existing_address["place_id"]
+
+        if "place_lat" in existing_address:
+            address_parsed["place_lat"] = existing_address["place_lat"]
+
+        if "place_lng" in existing_address:
+            address_parsed["place_lng"] = existing_address["place_lng"]
 
     with fs.open(address_path, "w") as f:
         json.dump(address_parsed, f, indent=4, ensure_ascii=False)
