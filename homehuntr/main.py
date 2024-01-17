@@ -82,18 +82,18 @@ def handle_missing_directions(fs: GCSFileSystem) -> None:
         )
 
 
-def update_last_modified(
-    url_df: pl.DataFrame, url: str, destination: str, fs: GCSFileSystem
-) -> pl.DataFrame:
-    url_df = url_df.with_columns(
+def update_last_modified(url: str, destination: str, fs: GCSFileSystem) -> None:
+    with fs.open(destination, "rb") as f:
+        url_df = pl.read_csv(f.read())
+
+    url_df_new = url_df.with_columns(
         date_modified=pl.when(pl.col("link") == url)
-        .then(pl.lit(dt.now()))
+        .then(pl.lit(dt.now().isoformat()))
         .otherwise(pl.col("date_modified"))
     )
 
     with fs.open(destination, "wb") as f:
-        url_df.write_csv(f)  # type: ignore
-    return url_df
+        url_df_new.write_csv(f)  # type: ignore
 
 
 def main():
@@ -180,7 +180,7 @@ def main():
                 continue
 
             get_directions(uid=scraping_result["uid"], refresh_directions=True)
-            url_df = update_last_modified(url_df, url, link_path, fs)
+            update_last_modified(url, link_path, fs)
 
     # stale urls need to have directions requested only if refresh_directions is True
     if len(stale_urls) > 0:
@@ -191,7 +191,7 @@ def main():
             get_directions(
                 uid=scraping_result["uid"], refresh_directions=refresh_directions
             )
-            url_df = update_last_modified(url_df, url, link_path, fs)
+            update_last_modified(url, link_path, fs)
 
     parse_distance(run_type="overwrite")
     dedupe_directions()
