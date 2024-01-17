@@ -176,6 +176,9 @@ def main():
     if len(new_urls) > 0:
         for url in new_urls:
             scraping_result = scrape_apartment_url(url)
+            if scraping_result is None:
+                continue
+
             get_directions(uid=scraping_result["uid"], refresh_directions=True)
             url_df = update_last_modified(url_df, url, link_path, fs)
 
@@ -183,6 +186,8 @@ def main():
     if len(stale_urls) > 0:
         for url in stale_urls:
             scraping_result = scrape_apartment_url(url)
+            if scraping_result is None:
+                continue
             get_directions(
                 uid=scraping_result["uid"], refresh_directions=refresh_directions
             )

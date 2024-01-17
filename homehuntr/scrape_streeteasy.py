@@ -231,16 +231,20 @@ def get_num_times_saved(tree: HtmlElement) -> int:
     return int(saved_listings)
 
 
-def scrape_apartment_url(url) -> ScrapeResult:
+def scrape_apartment_url(url: str) -> Optional[ScrapeResult]:
+    fs, token = common.get_gcp_fs()
+
     check_result = check_if_url_exists(url)
-    if check_result["url_exists"]:
-        return check_result
+    address_uid = check_result["uid"]
 
-    print("Parsing address: ", url)
-
+    print("parsing address...")
     tree = get_page_tree(url)
+    vitals = get_vitals(tree)
 
-    address_uid = str(uuid.uuid4())
+    if vitals["delisted"]:
+        common.drop_home(uid=address_uid, url=url, fs=fs, token=token)
+        return
+
     building_address = get_building_address(tree)
 
     address_parsed: Home = {
@@ -249,7 +253,7 @@ def scrape_apartment_url(url) -> ScrapeResult:
         "building_address": building_address,
         "neighborhood": get_neighborhood(tree),
         "price_details": get_price_elements(tree),
-        "vitals": get_vitals(tree),
+        "vitals": vitals,
         "building_details": get_building_details(tree),
         "amenities": get_amenities(tree),
         "times_saved": get_num_times_saved(tree),
