@@ -1,16 +1,12 @@
 import json
-import os
-from dotenv import load_dotenv
 import requests
 from lxml import html
 from lxml.html import HtmlElement
-from typing import TypedDict, Optional
+from typing import NotRequired, TypedDict, Optional
 from datetime import datetime as dt
 import argparse
 import uuid
-from pathlib import Path
 import re
-import gcsfs
 import polars as pl
 
 from homehuntr import common
@@ -28,6 +24,7 @@ class PriceElement(TypedDict):
 class Vitals(TypedDict):
     date_available: Optional[str]
     days_on_market: Optional[int]
+    delisted: bool
 
 
 class BuildingDetails(TypedDict):
@@ -46,6 +43,9 @@ class Home(TypedDict):
     building_details: BuildingDetails
     amenities: list
     times_saved: int
+    place_id: NotRequired[str]
+    place_lat: NotRequired[str]
+    place_lng: NotRequired[str]
 
 
 class CheckResult(TypedDict):
