@@ -207,16 +207,24 @@ def get_vitals(tree: HtmlElement) -> Vitals:
     date_available_raw, days_on_market = [
         i.text_content().strip().split("\n")[-1].strip() for i in vitals
     ]
-    if date_available_raw.upper() == "AVAILABLE NOW":
+
+    delisted = False
+    date_available_raw_upper = date_available_raw.upper()
+    if date_available_raw_upper == "AVAILABLE NOW":
         date_available = dt.today().strftime("%Y-%m-%d")
-    elif "No Longer Available" in date_available_raw:
+    elif "NO LONGER AVAILABLE" or "DELISTED" in date_available_raw_upper:
         date_available = None
         days_on_market = None
+        delisted = True
     else:
         date_available = dt.strptime(date_available_raw, "%m/%d/%Y").strftime(
             "%Y-%m-%d"
         )
-    return {"date_available": date_available, "days_on_market": days_on_market}
+    return {
+        "date_available": date_available,
+        "days_on_market": days_on_market,
+        "delisted": delisted,
+    }
 
 
 def get_num_times_saved(tree: HtmlElement) -> int:
