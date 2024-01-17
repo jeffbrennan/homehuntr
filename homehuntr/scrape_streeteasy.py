@@ -286,7 +286,7 @@ def check_if_url_exists(url: str) -> CheckResult:
     if n_results == 0:
         return {"url_exists": False, "uid": str(uuid.uuid4())}
     elif n_results == 1:
-        uid = uid_df.select("uid").first().get("uid")
+        uid = uid_df.select("uid").item()
         return {"url_exists": True, "uid": uid}
     else:
         raise ValueError(f"Expecting 0 or 1 results, got {n_results}")
