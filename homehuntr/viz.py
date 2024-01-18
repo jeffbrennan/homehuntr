@@ -161,14 +161,22 @@ app.layout = html.Div(
             value=all_origins[0],
             clearable=False,
             style={
-                "width": "50%",
+                "width": "100%",
                 "textAlign": "left",
                 "font-family": "sans-serif",
                 "font-size": "10px",
             },
             optionHeight=20,
         ),
-        dcc.Graph(id="graph"),
+        dcc.Graph(
+            id="graph",
+            style={
+                "overflow": "auto",
+                "height": "400px",
+                "width": "100%",
+                "border": "none",
+            },
+        ),
         html.Hr(),
     ]
 )
@@ -200,7 +208,7 @@ def update_bar_chart(origin: str):
         x="duration_min",
         color="origin",
         barmode="group",
-        color_discrete_map={"avg": "#ededed", origin: "#47ff94"},
+        color_discrete_map={"avg": "rgba(0,0,0,0.1)", origin: "#47ff94"},
         text="duration_min",
     )
 
@@ -208,13 +216,21 @@ def update_bar_chart(origin: str):
         marker_line_width=1.5,
         opacity=1,
         marker_line_color="black",
-        textposition="outside",
         textfont_size=12,
     )
     fig.update_yaxes(title="")
-    fig.update_xaxes(title="Travel Time Duration (min)")
+    fig.update_xaxes(
+        title="Travel Time Duration (min)",
+    )
 
-    fig.update_layout({"showlegend": False})
+    fig.update_layout(
+        yaxis={"tickfont": {"size": 10}},
+        xaxis={"titlefont": {"size": 10}},
+        margin={"l": 0, "r": 10, "b": 0, "t": 0},
+        showlegend=False,
+        plot_bgcolor="rgba(0, 0, 0, 0)",
+    )
+
     return fig
 
 
