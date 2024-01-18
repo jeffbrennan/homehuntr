@@ -27,7 +27,13 @@ summary_table_df = (
     .agg(pl.mean("transit_score").alias("transit_score"))
     .with_columns(pl.col("building_address").str.split(by=",").alias("address_split"))
     .with_columns(
-        address=pl.col("address_split").map_elements(lambda x: x[0]).str.to_uppercase()
+        address_part=pl.col("address_split")
+        .map_elements(lambda x: x[0])
+        .str.to_uppercase()
+    )
+    .with_columns(space_split=pl.col("address_part").str.split(by=" "))
+    .with_columns(
+        address=(pl.col("space_split").map_elements(lambda x: x[0:-1]).list.join(" "))
     )
     .filter(pl.col("address").is_not_null())
     .filter(pl.col("transit_score").is_not_null())
@@ -64,6 +70,7 @@ summary_table_df = (
     .to_pandas()
 )
 
+
 travel_time_df = (
     obt.select("building_address", "destination_name", "duration_min")
     .unique()
@@ -93,9 +100,18 @@ all_origins = travel_time_df.select("origin").unique().to_dict()["origin"].to_li
 
 
 app = Dash(__name__)
-
 app.layout = html.Div(
     [
+        html.H1(
+            "🏠🎯",
+            style={
+                "marginTop": "0",
+                "paddingTop": "20px",
+                "paddingBottom": "0px",
+                "font-family": "sans-serif",
+            },
+        ),
+        html.Hr(),
         dash_table.DataTable(
             id="datatable-interactivity",
             columns=[
@@ -125,10 +141,15 @@ app.layout = html.Div(
                 "font_size": "11px",
                 "font-family": "sans-serif",
                 "textAlign": "left",
+                "border": "none",
             },
             fixed_rows={"headers": True},
-            style_header={"backgroundColor": "white", "fontWeight": "bold"},
-            style_table={"height": "300px", "overflowY": "auto"},
+            style_header={
+                "backgroundColor": "white",
+                "fontWeight": "bold",
+                "border": "none",
+            },
+            style_table={"height": "300px", "overflowY": "auto", "border": "none"},
             markdown_options={"html": True},
         ),
         html.Div(id="datatable-interactivity-container"),
