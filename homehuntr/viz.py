@@ -154,7 +154,7 @@ app.layout = html.Div(
         ),
         html.Div(id="datatable-interactivity-container"),
         html.Hr(),
-        html.H3("🚂 Travel Times", style={"font-family": "sans-serif"}),
+        html.H3("🚂 Minutes to Destination", style={"font-family": "sans-serif"}),
         dcc.Dropdown(
             id="dropdown",
             options=all_origins,
@@ -220,7 +220,8 @@ def update_bar_chart(origin: str):
     )
     fig.update_yaxes(title="")
     fig.update_xaxes(
-        title="Travel Time Duration (min)",
+        title="",
+        showticklabels=False,
     )
 
     fig.update_layout(
