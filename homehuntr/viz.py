@@ -218,6 +218,7 @@ def update_bar_chart(origin: str):
             .then(pl.lit("baseline"))
             .otherwise(pl.col("average_comparison"))
         )
+        .sort(pl.col("avg_duration_min"))
         .to_pandas()
     )
 
@@ -249,7 +250,8 @@ def update_bar_chart(origin: str):
         if i["name"] == "baseline, avg":
             i["text"] = None
 
-    fig.update_yaxes(title="", categoryorder="total ascending")
+    fig.update_yaxes(title="")
+
     fig.update_xaxes(
         title="",
         showticklabels=False,
