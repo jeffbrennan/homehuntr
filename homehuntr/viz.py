@@ -197,28 +197,59 @@ def update_bar_chart(origin: str):
         .select("origin", "destination", "duration_min")
     )
 
-    travel_time_combined_df = pl.concat(
-        [travel_time_selected_df, travel_time_other_avg_df]
-    ).to_pandas()
+    travel_time_combined_df = (
+        pl.concat([travel_time_selected_df, travel_time_other_avg_df])
+        .join(
+            travel_time_other_avg_df.rename(
+                {"duration_min": "avg_duration_min"}
+            ).select("destination", "avg_duration_min"),
+            on="destination",
+            how="inner",
+        )
+        .with_columns(
+            average_comparison=pl.when(
+                pl.col("avg_duration_min") >= pl.col("duration_min")
+            )
+            .then(pl.lit("faster"))
+            .otherwise(pl.lit("slower"))
+        )
+        .with_columns(
+            average_comparison=pl.when(pl.col("origin") == pl.lit("avg"))
+            .then(pl.lit("baseline"))
+            .otherwise(pl.col("average_comparison"))
+        )
+        .to_pandas()
+    )
 
-    # on top of one another
     fig = px.bar(
         travel_time_combined_df,
         y="destination",
         x="duration_min",
-        color="origin",
-        barmode="group",
-        color_discrete_map={"avg": "rgba(0,0,0,0.1)", origin: "#47ff94"},
+        color="average_comparison",
+        barmode="overlay",
+        color_discrete_map={
+            "baseline": "rgba(0, 0, 0, 0.01)",
+            "faster": "rgba(53, 240, 140, 1)",
+            "slower": "rgba(250, 92, 0, 1)",
+        },
         text="duration_min",
+        pattern_shape="origin",
+        pattern_shape_map={origin: "/", "avg": None},
     )
 
     fig.update_traces(
-        marker_line_width=1.5,
-        opacity=1,
+        textfont_size=14,
+        textposition="outside",
         marker_line_color="black",
-        textfont_size=12,
+        marker_line_width=3,
     )
-    fig.update_yaxes(title="")
+
+    for i in fig.data:
+        i["marker"]["opacity"] = 1
+        if i["name"] == "baseline, avg":
+            i["text"] = None
+
+    fig.update_yaxes(title="", categoryorder="total ascending")
     fig.update_xaxes(
         title="",
         showticklabels=False,
@@ -230,6 +261,7 @@ def update_bar_chart(origin: str):
         margin={"l": 0, "r": 10, "b": 0, "t": 0},
         showlegend=False,
         plot_bgcolor="rgba(0, 0, 0, 0)",
+        hovermode=False,
     )
 
     return fig
