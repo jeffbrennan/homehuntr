@@ -283,7 +283,7 @@ def parse_distance(run_type: str = "overwrite"):
         i for i in fs.ls("homehuntr-storage/directions") if i.endswith(" transit.json")
     ]
 
-    with ThreadPoolExecutor(max_workers=128) as executor:
+    with ThreadPoolExecutor() as executor:
         transit_directions = list(
             executor.map(json_to_dict, repeat(fs), transit_directions_paths)
         )
@@ -293,10 +293,10 @@ def parse_distance(run_type: str = "overwrite"):
 
     transit_directions_final = parse_transit_result(fs, transit_directions_raw)
 
-    # TODO: run pyspark on same dataset and compare results in separate test script
     transit_directions_final.write_delta(
-        "gs://homehuntr-storage/delta/transit_directions_polars",
+        "gs://homehuntr-storage/delta/transit_directions",
         mode="overwrite",
+        overwrite_schema=True,
         storage_options={"SERVICE_ACCOUNT": token},
     )
 
