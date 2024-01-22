@@ -312,6 +312,8 @@ def summarize_scores(df: pl.DataFrame) -> pl.DataFrame:
                 "building_address",
                 "url",
                 "neighborhood",
+                "date_available",
+                "times_saved",
                 "price",
                 "is_fee",
                 "has_dishwasher",
@@ -363,6 +365,7 @@ def summarize_data() -> None:
     summary_df.write_delta(
         f"{out_base_path}/summary",
         mode="overwrite",
+        overwrite_schema=True,
         storage_options={"SERVICE_ACCOUNT": token},
     )
 

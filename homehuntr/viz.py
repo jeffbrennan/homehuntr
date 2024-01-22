@@ -17,13 +17,27 @@ obt = pl.read_delta(
     storage_options={"SERVICE_ACCOUNT": token},
 )
 
+
 # TODO: precompute this table
 summary_table_df = (
     summary_df.select(
-        "building_address", "price", "url", "apartment_score", "transit_score"
+        "building_address",
+        "neighborhood",
+        "times_saved",
+        "price",
+        "url",
+        "apartment_score",
+        "transit_score",
     )
     .unique()
-    .group_by("building_address", "price", "url", "apartment_score")
+    .group_by(
+        "building_address",
+        "neighborhood",
+        "times_saved",
+        "price",
+        "url",
+        "apartment_score",
+    )
     .agg(pl.mean("transit_score").alias("transit_score"))
     .with_columns(pl.col("building_address").str.split(by=",").alias("address_split"))
     .with_columns(
@@ -56,13 +70,23 @@ summary_table_df = (
         score_combined=pl.col("apartment_score") * 0.6 + pl.col("transit_score") * 0.4
     )
     .with_columns(rank=pl.col("score_combined").rank(method="ordinal", descending=True))
-    .select("rank", "address", "price", "apartment_score", "transit_score")
+    .select(
+        "rank",
+        "address",
+        "neighborhood",
+        "times_saved",
+        "price",
+        "apartment_score",
+        "transit_score",
+    )
     .sort(pl.col("apartment_score"), descending=True)
     .rename(
         {
             "rank": "🏆",
             "address": "📍",
             "price": "💰",
+            "neighborhood": "🏘️",
+            "times_saved": "📌",
             "apartment_score": "🏠",
             "transit_score": "🚂",
         }
@@ -184,9 +208,11 @@ app.layout = html.Div(
 
 @callback(Output("graph", "figure"), Input("dropdown", "value"))
 def update_bar_chart(origin: str):
-    travel_time_selected_df = travel_time_df.filter(
-        pl.col("origin") == pl.lit(origin)
-    ).select("origin", "destination", "duration_min")
+    travel_time_selected_df = (
+        travel_time_df.filter(pl.col("origin") == pl.lit(origin))
+        .with_columns(duration_min=pl.col("duration_min").floor().cast(pl.Int64))
+        .select("origin", "destination", "duration_min")
+    )
 
     travel_time_other_avg_df = (
         travel_time_df.filter(pl.col("origin") != pl.lit(origin))
